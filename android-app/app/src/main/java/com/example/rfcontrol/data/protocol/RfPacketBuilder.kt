@@ -3,7 +3,10 @@ package com.example.rfcontrol.data.protocol
 import java.util.Locale
 
 object RfPacketBuilder {
-    const val PacketSize = 42
+    const val OverAirPacketSize = 42
+    const val LegacyAdvDataSize = 31
+    private const val AdvDataStartIndex = 8
+    private const val AdvDataEndIndex = 38
 
     fun isDeviceIdValid(deviceId: String): Boolean {
         return Regex("^LX_DX[0-9A-Z]{3}$").matches(deviceId)
@@ -14,7 +17,7 @@ object RfPacketBuilder {
         mode: ControlMode,
         levels: StrengthLevels
     ): ByteArray {
-        val bytes = ByteArray(PacketSize)
+        val bytes = ByteArray(OverAirPacketSize)
         bytes[0] = 0x42
         bytes[1] = 0x25
         bytes[8] = 0x02
@@ -39,6 +42,25 @@ object RfPacketBuilder {
         bytes[40] = 0x55
         bytes[41] = 0x55
         return bytes
+    }
+
+    /**
+     * Returns Byte9~Byte39, i.e. the 31-byte BLE legacy AdvData portion.
+     *
+     * The complete on-air RF packet is still 42 bytes:
+     * 2-byte BLE advertising PDU header + 6-byte advertiser address + 31-byte
+     * AdvData + 3-byte link-layer CRC.
+     *
+     * Android application code should hand only this 31-byte AdvData concept to
+     * the BLE advertising layer. Header, advertiser address, and CRC are handled
+     * by the controller/link layer.
+     */
+    fun buildControlAdvData(
+        deviceId: String,
+        mode: ControlMode,
+        levels: StrengthLevels
+    ): ByteArray {
+        return buildControlPacket(deviceId, mode, levels).sliceArray(AdvDataStartIndex..AdvDataEndIndex)
     }
 
     fun buildDevicePacket(device: RfDevice, battery: Int): ByteArray {

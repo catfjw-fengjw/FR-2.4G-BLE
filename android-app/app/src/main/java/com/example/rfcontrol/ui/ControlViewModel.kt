@@ -35,7 +35,7 @@ data class ControlUiState(
     val txCount: Long = 0,
     val logs: List<EventLog> = listOf(
         EventLog(LogType.Info, "原型已加载，当前使用模拟广播链路。"),
-        EventLog(LogType.Warn, "CRC 算法未定义，Byte40~Byte42 暂按 55 55 55 显示。")
+        EventLog(LogType.Warn, "42 字节为空中包预览；真机广播使用 Byte9~Byte39 的 31 字节 AdvData。")
     )
 ) {
     val validDeviceId: Boolean
@@ -230,7 +230,7 @@ class ControlViewModel(
     }
 
     fun noteCopied() {
-        addLog(LogType.Ok, "已复制当前 42 字节十六进制发送包。")
+        addLog(LogType.Ok, "已复制当前 42 字节空中包十六进制预览。")
     }
 
     private fun addLog(type: LogType, message: String) {

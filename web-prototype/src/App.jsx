@@ -155,7 +155,7 @@ function App() {
   const [txCount, setTxCount] = useState(0);
   const [logs, setLogs] = useState([
     { type: "info", text: "原型已加载，当前使用模拟广播链路。" },
-    { type: "warn", text: "CRC 算法未定义，Byte40~Byte42 暂按 55 55 55 显示。" }
+    { type: "warn", text: "42 字节为空中包预览；真机广播使用 Byte9~Byte39 的 31 字节 AdvData。" }
   ]);
   const txTickRef = useRef(0);
   const batteryRef = useRef(battery);
@@ -207,7 +207,7 @@ function App() {
 
   async function copyPacket() {
     await navigator.clipboard?.writeText(hexPacket);
-    addLog("ok", "已复制当前 42 字节十六进制发送包。");
+    addLog("ok", "已复制当前 42 字节空中包十六进制预览。");
   }
 
   function simulateReceive() {
@@ -447,7 +447,7 @@ function ConsoleView(props) {
           </div>
           <div className="warning-line">
             <ShieldAlert size={16} />
-            CRC 未定义，Byte40~Byte42 预留为 55 55 55。
+            真机广播使用 Byte9~Byte39 的 31 字节 AdvData；头/MAC/CRC 由链路层处理。
           </div>
         </section>
 
@@ -493,7 +493,7 @@ function PacketPreview({ bytes, hexPacket }) {
 
   return (
     <section className="panel packet-panel">
-      <PanelTitle icon={Hexagon} title="发送包预览" subtitle="42 字节 HEX" />
+      <PanelTitle icon={Hexagon} title="发送包预览" subtitle="42 字节空中包 HEX" />
       <div className="hex-grid">
         {groups.map((group, groupIndex) => (
           <div key={groupIndex} className="hex-row">
@@ -626,7 +626,7 @@ function DebugView({ bytes, hexPacket, logs, clearLogs, copyPacket, simulateRece
           <PanelTitle icon={Zap} title="校验信息" subtitle="协议层校验结果" />
           <Metric label="APP 校验码" value={`0x${toHex(bytes[22])}`} icon={CheckCircle2} tone="green" />
           <Metric label="设备校验示例" value="MAC & 0xFF" icon={Cpu} />
-          <Metric label="CRC 状态" value="未定义" icon={ShieldAlert} tone="red" />
+          <Metric label="CRC 状态" value="链路层处理" icon={ShieldAlert} tone="red" />
           <div className="mono-block">{hexPacket}</div>
         </section>
         <LogPanel logs={logs} />
@@ -652,7 +652,7 @@ function fieldName(byte) {
   if (byte === 28) return "电击强度";
   if (byte === 29) return "加热强度";
   if (byte >= 30 && byte <= 39) return "保留";
-  return "CRC 预留";
+  return "链路层 CRC";
 }
 
 function fieldSource(byte) {
@@ -660,7 +660,7 @@ function fieldSource(byte) {
   if (byte === 23) return "Byte14~22 求和";
   if (byte >= 24 && byte <= 29) return "强度控件";
   if (byte >= 14 && byte <= 21) return "设备 ID 输入";
-  if (byte >= 40 && byte <= 42) return "预留 0x55";
+  if (byte >= 40 && byte <= 42) return "链路层处理";
   return "协议固定值";
 }
 

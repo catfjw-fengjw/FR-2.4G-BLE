@@ -2,7 +2,7 @@ package com.example.rfcontrol.data.protocol
 
 object RfPacketParser {
     fun parseDeviceStatus(packet: ByteArray, rssi: Int): DeviceStatus? {
-        if (packet.size != RfPacketBuilder.PacketSize) return null
+        if (packet.size != RfPacketBuilder.OverAirPacketSize) return null
         if ((packet[0].toInt() and 0xFF) != 0x42) return null
         if ((packet[1].toInt() and 0xFF) != 0x25) return null
 

@@ -57,6 +57,18 @@ public class RfPacketBuilderTest {
     }
 
     @Test
+    public void controlAdvDataIsByte9ThroughByte39() {
+        StrengthLevels levels = new StrengthLevels(42, 30, 56, 3, 12, 36);
+        byte[] packet = RfPacketBuilder.INSTANCE.buildControlPacket("LX_DX001", ControlMode.Mode1, levels);
+        byte[] advData = RfPacketBuilder.INSTANCE.buildControlAdvData("LX_DX001", ControlMode.Mode1, levels);
+
+        assertEquals(31, advData.length);
+        for (int index = 0; index < advData.length; index++) {
+            assertEquals(packet[index + 8], advData[index]);
+        }
+    }
+
+    @Test
     public void validatesExpectedDeviceIdFormat() {
         assertTrue(RfPacketBuilder.INSTANCE.isDeviceIdValid("LX_DX001"));
     }

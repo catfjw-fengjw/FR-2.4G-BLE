@@ -347,7 +347,7 @@ private fun SendPanel(state: ControlUiState, viewModel: ControlViewModel) {
             CopyPacketButton(state, viewModel)
         }
         Spacer(Modifier.height(10.dp))
-        Text("CRC 未定义，Byte40~Byte42 预留为 55 55 55。", color = RfAmber, fontSize = 13.sp)
+        Text("真机广播使用 Byte9~Byte39 的 31 字节 AdvData；头/MAC/CRC 由链路层处理。", color = RfAmber, fontSize = 13.sp)
     }
 }
 
@@ -368,7 +368,7 @@ private fun CopyPacketButton(state: ControlUiState, viewModel: ControlViewModel)
 
 @Composable
 private fun PacketPreview(state: ControlUiState) {
-    Panel(title = "发送包预览", subtitle = "42 字节 HEX") {
+    Panel(title = "发送包预览", subtitle = "42 字节空中包 HEX") {
         val bytes = state.txPacket
         bytes.toList().chunked(7).forEachIndexed { index, group ->
             Row(
@@ -524,7 +524,7 @@ private fun DebugScreen(state: ControlUiState, viewModel: ControlViewModel) {
                 listOf(
                     "APP 校验码" to RfPacketBuilder.byteHex(state.txPacket[22].toInt()),
                     "设备校验示例" to "MAC & 0xFF",
-                    "CRC 状态" to "未定义"
+                    "CRC 状态" to "链路层处理"
                 )
             )
             Spacer(Modifier.height(10.dp))
@@ -691,7 +691,7 @@ private fun fieldName(byte: Int): String = when (byte) {
     28 -> "电击强度"
     29 -> "加热强度"
     in 30..39 -> "保留"
-    else -> "CRC 预留"
+    else -> "链路层 CRC"
 }
 
 private fun metricColor(label: String): Color = when (label) {
