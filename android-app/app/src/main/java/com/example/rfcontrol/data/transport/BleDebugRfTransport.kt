@@ -10,6 +10,7 @@ import android.bluetooth.le.AdvertiseSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.ParcelUuid
 import androidx.core.content.ContextCompat
 import com.example.rfcontrol.data.protocol.DeviceStatus
 import com.example.rfcontrol.data.protocol.RfDevice
@@ -24,10 +25,10 @@ import kotlinx.coroutines.flow.emptyFlow
  *
  * Android's public BluetoothLeAdvertiser does not provide a raw AdvData API.
  * The protocol's Byte9~Byte39 31-byte AdvData cannot be injected byte-for-byte.
- * For phone-side debugging this class broadcasts a compact manufacturer data
+ * For phone-side debugging this class broadcasts compact service data
  * carrier that contains the core protocol fields:
  *
- * RF 01 + Byte3~Byte8 sender MAC + Byte14~Byte29
+ * UUID FFF0 + RF 01 + Byte3~Byte8 sender MAC + Byte14~Byte29
  *
  * This is small enough for legacy advertising and can be inspected by a BLE
  * scanner while the firmware/receiver mapping is confirmed.
@@ -78,7 +79,7 @@ class BleDebugRfTransport(context: Context) : RfTransport {
             "Legacy AdvData 必须是 ${RfPacketBuilder.LegacyAdvDataSize} 字节。"
         }
 
-        val debugPayload = buildDebugManufacturerPayload(overAirPacket)
+        val servicePayload = buildServicePayload(overAirPacket)
         val settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
@@ -88,7 +89,7 @@ class BleDebugRfTransport(context: Context) : RfTransport {
         val data = AdvertiseData.Builder()
             .setIncludeDeviceName(false)
             .setIncludeTxPowerLevel(false)
-            .addManufacturerData(DebugManufacturerId, debugPayload)
+            .addServiceData(ServiceUuid, servicePayload)
             .build()
 
         val callback = object : AdvertiseCallback() {
@@ -96,7 +97,7 @@ class BleDebugRfTransport(context: Context) : RfTransport {
                 _transportEvents.tryEmit(
                     TransportEvent(
                         TransportEventType.Tx,
-                        "MAC=${macHex(debugPayload.sliceArray(3..8))} DATA=${hex(debugPayload)}"
+                        "UUID=${ServiceUuid.uuid} MAC=${macHex(servicePayload.sliceArray(3..8))} DATA=${hex(servicePayload)}"
                     )
                 )
             }
@@ -134,7 +135,7 @@ class BleDebugRfTransport(context: Context) : RfTransport {
             PackageManager.PERMISSION_GRANTED
     }
 
-    private fun buildDebugManufacturerPayload(overAirPacket: ByteArray): ByteArray {
+    private fun buildServicePayload(overAirPacket: ByteArray): ByteArray {
         val senderMac = overAirPacket.sliceArray(2..7)
         val coreProtocol = overAirPacket.sliceArray(13..28)
         return byteArrayOf('R'.code.toByte(), 'F'.code.toByte(), 0x01) + senderMac + coreProtocol
@@ -153,8 +154,6 @@ class BleDebugRfTransport(context: Context) : RfTransport {
 
     private fun yesNo(value: Boolean): String = if (value) "OK" else "NO"
 
-    private fun idHex(): String = "0x%04X".format(Locale.US, DebugManufacturerId)
-
     private fun hex(bytes: ByteArray): String {
         return bytes.joinToString(" ") { "%02X".format(Locale.US, it.toInt() and 0xFF) }
     }
@@ -164,6 +163,6 @@ class BleDebugRfTransport(context: Context) : RfTransport {
     }
 
     private companion object {
-        const val DebugManufacturerId = 0xFFFF
+        val ServiceUuid: ParcelUuid = ParcelUuid.fromString("0000FFF0-0000-1000-8000-00805F9B34FB")
     }
 }
