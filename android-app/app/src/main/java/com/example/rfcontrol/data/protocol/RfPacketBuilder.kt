@@ -9,7 +9,7 @@ object RfPacketBuilder {
     private const val AdvDataEndIndex = 38
 
     fun isDeviceIdValid(deviceId: String): Boolean {
-        return Regex("^LX_DX[0-9A-Z]{3}$").matches(deviceId)
+        return Regex("^[0-9A-Z]{1,8}$").matches(deviceId)
     }
 
     fun buildControlPacket(

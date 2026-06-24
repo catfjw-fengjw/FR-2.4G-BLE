@@ -2,6 +2,7 @@ package com.example.rfcontrol.data.protocol;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -70,6 +71,8 @@ public class RfPacketBuilderTest {
 
     @Test
     public void validatesExpectedDeviceIdFormat() {
-        assertTrue(RfPacketBuilder.INSTANCE.isDeviceIdValid("LX_DX001"));
+        assertTrue(RfPacketBuilder.INSTANCE.isDeviceIdValid("111111"));
+        assertTrue(RfPacketBuilder.INSTANCE.isDeviceIdValid("ABC12345"));
+        assertFalse(RfPacketBuilder.INSTANCE.isDeviceIdValid("LX_DX001"));
     }
 }

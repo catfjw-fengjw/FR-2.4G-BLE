@@ -26,20 +26,20 @@ import kotlinx.coroutines.launch
 
 data class ControlUiState(
     val activeTab: AppTab = AppTab.Console,
-    val deviceId: String = "LX_DX001",
+    val deviceId: String = "111111",
     val selectedMode: ControlMode = ControlMode.Mode1,
     val levels: StrengthLevels = StrengthLevels(),
     val isAdvertising: Boolean = false,
-    val isScanning: Boolean = true,
+    val isScanning: Boolean = false,
     val battery: Int = 86,
     val rssi: Int = -46,
     val lastRxAt: String = "等待收包",
     val txCount: Long = 0,
-    val useRealBle: Boolean = false,
+    val useRealBle: Boolean = true,
     val bleCapability: String = "未检测",
     val logs: List<EventLog> = listOf(
-        EventLog(LogType.Info, "原型已加载，当前使用模拟广播链路。"),
-        EventLog(LogType.Warn, "42 字节为空中包预览；真机广播使用 Byte9~Byte39 的 31 字节 AdvData。")
+        EventLog(LogType.Info, "控制台已加载，默认设备 ID：111111。"),
+        EventLog(LogType.Warn, "真机广播使用 Manufacturer Data 承载核心协议字段。")
     )
 ) {
     val validDeviceId: Boolean
@@ -137,7 +137,7 @@ class ControlViewModel(
     }
 
     fun updateDeviceId(value: String) {
-        _uiState.update { it.copy(deviceId = value.uppercase().take(16)) }
+        _uiState.update { it.copy(deviceId = value.uppercase().take(8)) }
         refreshRealAdvertisementIfRunning("设备 ID 更新")
     }
 
@@ -174,7 +174,7 @@ class ControlViewModel(
     fun startAdvertising() {
         val state = _uiState.value
         if (!state.validDeviceId) {
-            addLog(LogType.Error, "设备 ID 格式错误，示例格式：LX_DX001。")
+            addLog(LogType.Error, "设备 ID 格式错误，请输入 1~8 位数字或大写字母。")
             return
         }
         val activeTransport = activeTransport()
