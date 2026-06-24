@@ -68,7 +68,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val bleTransport = BleDebugRfTransport(this)
         controlViewModel.configureRealBleTransport(bleTransport, bleTransport.capabilitySummary())
-        controlViewModel.setUseRealBle(true)
         requestBlePermissionsIfNeeded()
         setContent {
             RfControlTheme {
@@ -166,6 +165,8 @@ private fun SimpleControlConsole(state: ControlUiState, viewModel: ControlViewMo
 
             Panel {
                 MetricRow("设备 ID", state.deviceId)
+                MetricRow("发送 MAC", state.senderMac)
+                MetricRow("UUID", state.broadcastUuid)
                 MetricRow("发送计数", state.txCount.toString())
                 MetricRow("广播状态", if (state.isAdvertising) "运行中" else "停止")
             }
@@ -191,7 +192,7 @@ private fun MetricRow(label: String, value: String) {
 @Composable
 private fun LogPanel(logs: List<EventLog>) {
     Panel {
-        Text("日志", color = RfText, fontSize = 18.sp, fontWeight = FontWeight.Black)
+        Text("发送内容", color = RfText, fontSize = 18.sp, fontWeight = FontWeight.Black)
         Spacer(Modifier.height(10.dp))
         if (logs.isEmpty()) {
             Text("暂无日志", color = RfMuted)

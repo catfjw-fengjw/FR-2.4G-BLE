@@ -27,7 +27,7 @@ import kotlinx.coroutines.flow.emptyFlow
  * For phone-side debugging this class broadcasts a compact manufacturer data
  * carrier that contains the core protocol fields:
  *
- * RF 01 + Byte14~Byte29
+ * RF 01 + Byte3~Byte8 sender MAC + Byte14~Byte29
  *
  * This is small enough for legacy advertising and can be inspected by a BLE
  * scanner while the firmware/receiver mapping is confirmed.
@@ -95,14 +95,8 @@ class BleDebugRfTransport(context: Context) : RfTransport {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
                 _transportEvents.tryEmit(
                     TransportEvent(
-                        TransportEventType.Ok,
-                        "真机 BLE 调试广播已启动，Manufacturer ID=${idHex()}，Payload=${hex(debugPayload)}。"
-                    )
-                )
-                _transportEvents.tryEmit(
-                    TransportEvent(
-                        TransportEventType.Warn,
-                        "Android 不能发送原始 31 字节 AdvData；当前广播承载 RF 01 + Byte14~Byte29，用于抓包调试。"
+                        TransportEventType.Tx,
+                        "MAC=${macHex(debugPayload.sliceArray(3..8))} DATA=${hex(debugPayload)}"
                     )
                 )
             }
@@ -128,7 +122,7 @@ class BleDebugRfTransport(context: Context) : RfTransport {
             advertiser?.stopAdvertising(callback)
         }
         advertiseCallback = null
-        _transportEvents.tryEmit(TransportEvent(TransportEventType.Info, "真机 BLE 调试广播已停止。"))
+        _transportEvents.tryEmit(TransportEvent(TransportEventType.Info, ""))
     }
 
     override suspend fun startScanning() = Unit
@@ -141,8 +135,9 @@ class BleDebugRfTransport(context: Context) : RfTransport {
     }
 
     private fun buildDebugManufacturerPayload(overAirPacket: ByteArray): ByteArray {
+        val senderMac = overAirPacket.sliceArray(2..7)
         val coreProtocol = overAirPacket.sliceArray(13..28)
-        return byteArrayOf('R'.code.toByte(), 'F'.code.toByte(), 0x01) + coreProtocol
+        return byteArrayOf('R'.code.toByte(), 'F'.code.toByte(), 0x01) + senderMac + coreProtocol
     }
 
     private fun advertiseErrorText(errorCode: Int): String {
@@ -162,6 +157,10 @@ class BleDebugRfTransport(context: Context) : RfTransport {
 
     private fun hex(bytes: ByteArray): String {
         return bytes.joinToString(" ") { "%02X".format(Locale.US, it.toInt() and 0xFF) }
+    }
+
+    private fun macHex(bytes: ByteArray): String {
+        return bytes.joinToString(":") { "%02X".format(Locale.US, it.toInt() and 0xFF) }
     }
 
     private companion object {

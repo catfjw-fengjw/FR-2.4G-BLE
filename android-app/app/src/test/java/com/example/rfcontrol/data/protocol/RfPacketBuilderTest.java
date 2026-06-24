@@ -48,6 +48,21 @@ public class RfPacketBuilderTest {
     }
 
     @Test
+    public void senderMacWritesToBytes3Through8() {
+        byte[] packet = RfPacketBuilder.INSTANCE.buildControlPacket(
+                "111111",
+                ControlMode.Mode1,
+                new StrengthLevels(42, 30, 56, 3, 0, 36),
+                "11:22:33:44:55:66"
+        );
+
+        assertArrayEquals(
+                new byte[]{0x11, 0x22, 0x33, 0x44, 0x55, 0x66},
+                new byte[]{packet[2], packet[3], packet[4], packet[5], packet[6], packet[7]}
+        );
+    }
+
+    @Test
     public void crcBytesRemainReserved55() {
         byte[] packet = RfPacketBuilder.INSTANCE.buildControlPacket(
                 "LX_DX001",

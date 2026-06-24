@@ -5,6 +5,7 @@ import java.util.Locale
 object RfPacketBuilder {
     const val OverAirPacketSize = 42
     const val LegacyAdvDataSize = 31
+    const val DefaultSenderMac = "11:11:11:11:11:11"
     private const val AdvDataStartIndex = 8
     private const val AdvDataEndIndex = 38
 
@@ -12,14 +13,19 @@ object RfPacketBuilder {
         return Regex("^[0-9A-Z]{1,8}$").matches(deviceId)
     }
 
+    @JvmOverloads
     fun buildControlPacket(
         deviceId: String,
         mode: ControlMode,
-        levels: StrengthLevels
+        levels: StrengthLevels,
+        senderMac: String = DefaultSenderMac
     ): ByteArray {
         val bytes = ByteArray(OverAirPacketSize)
         bytes[0] = 0x42
         bytes[1] = 0x25
+        parseMac(senderMac).forEachIndexed { index, value ->
+            bytes[2 + index] = value.toByte()
+        }
         bytes[8] = 0x02
         bytes[9] = 0x01
         bytes[10] = 0x06
@@ -55,12 +61,14 @@ object RfPacketBuilder {
      * the BLE advertising layer. Header, advertiser address, and CRC are handled
      * by the controller/link layer.
      */
+    @JvmOverloads
     fun buildControlAdvData(
         deviceId: String,
         mode: ControlMode,
-        levels: StrengthLevels
+        levels: StrengthLevels,
+        senderMac: String = DefaultSenderMac
     ): ByteArray {
-        return buildControlPacket(deviceId, mode, levels).sliceArray(AdvDataStartIndex..AdvDataEndIndex)
+        return buildControlPacket(deviceId, mode, levels, senderMac).sliceArray(AdvDataStartIndex..AdvDataEndIndex)
     }
 
     fun buildDevicePacket(device: RfDevice, battery: Int): ByteArray {
