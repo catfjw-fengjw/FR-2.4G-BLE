@@ -1,7 +1,10 @@
 package com.example.rfcontrol
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.BorderStroke
@@ -53,6 +56,7 @@ import com.example.rfcontrol.data.protocol.EventLog
 import com.example.rfcontrol.data.protocol.LogType
 import com.example.rfcontrol.data.protocol.RfDevice
 import com.example.rfcontrol.data.protocol.RfPacketBuilder
+import com.example.rfcontrol.data.transport.BleDebugRfTransport
 import com.example.rfcontrol.ui.AppTab
 import com.example.rfcontrol.ui.ControlUiState
 import com.example.rfcontrol.ui.ControlViewModel
@@ -74,9 +78,17 @@ import com.example.rfcontrol.ui.theme.RfText
 
 class MainActivity : ComponentActivity() {
     private val controlViewModel by viewModels<ControlViewModel>()
+    private val blePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        controlViewModel.noteBlePermissionResult(it.values.all { granted -> granted })
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val bleTransport = BleDebugRfTransport(this)
+        controlViewModel.configureRealBleTransport(bleTransport, bleTransport.capabilitySummary())
+        requestBlePermissionsIfNeeded()
         setContent {
             RfControlTheme {
                 val state by controlViewModel.uiState.collectAsState()
@@ -84,6 +96,17 @@ class MainActivity : ComponentActivity() {
                 RfControlApp(state, devices, controlViewModel)
             }
         }
+    }
+
+    private fun requestBlePermissionsIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        blePermissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_ADVERTISE,
+                Manifest.permission.BLUETOOTH_CONNECT
+            )
+        )
     }
 }
 
@@ -202,7 +225,9 @@ private fun DeviceStatusPanel(state: ControlUiState, viewModel: ControlViewModel
                 "电量" to "${state.battery}%",
                 "RSSI" to "${state.rssi} dBm",
                 "最近收包" to state.lastRxAt,
-                "发送计数" to state.txCount.toString()
+                "发送计数" to state.txCount.toString(),
+                "广播链路" to if (state.useRealBle) "真机 BLE" else "模拟",
+                "BLE 能力" to state.bleCapability
             )
         )
     }
@@ -336,18 +361,52 @@ private fun ClipSelector(value: Int, viewModel: ControlViewModel) {
 
 @Composable
 private fun SendPanel(state: ControlUiState, viewModel: ControlViewModel) {
-    Panel(title = "广播发送", subtitle = "模拟 10ms 重复发送") {
+    Panel(title = "广播发送", subtitle = if (state.useRealBle) "真机 BLE 调试广播" else "模拟 10ms 重复发送") {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(
+                onClick = { viewModel.setUseRealBle(false) },
+                border = BorderStroke(1.dp, if (!state.useRealBle) RfTeal else RfLine),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = if (!state.useRealBle) RfTeal.copy(alpha = 0.16f) else Color.Transparent,
+                    contentColor = if (!state.useRealBle) RfTeal else RfMuted
+                )
+            ) {
+                Text("模拟链路", fontWeight = FontWeight.Black)
+            }
+            OutlinedButton(
+                onClick = { viewModel.setUseRealBle(true) },
+                border = BorderStroke(1.dp, if (state.useRealBle) RfAmber else RfLine),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = if (state.useRealBle) RfAmber.copy(alpha = 0.16f) else Color.Transparent,
+                    contentColor = if (state.useRealBle) RfAmber else RfMuted
+                )
+            ) {
+                Text("真机 BLE 调试", fontWeight = FontWeight.Black)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(
                 onClick = { if (state.isAdvertising) viewModel.stopAdvertising() else viewModel.startAdvertising() },
-                colors = ButtonDefaults.buttonColors(containerColor = RfTeal, contentColor = Color(0xFF07110E))
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (state.useRealBle) RfAmber else RfTeal,
+                    contentColor = Color(0xFF07110E)
+                )
             ) {
                 Text(if (state.isAdvertising) "停止广播" else "开始广播", fontWeight = FontWeight.Black)
             }
             CopyPacketButton(state, viewModel)
         }
         Spacer(Modifier.height(10.dp))
-        Text("真机广播使用 Byte9~Byte39 的 31 字节 AdvData；头/MAC/CRC 由链路层处理。", color = RfAmber, fontSize = 13.sp)
+        Text(
+            if (state.useRealBle) {
+                "当前真机调试使用 Manufacturer Data 承载 RF 01 + Byte14~Byte29；原始 31 字节 AdvData 需接收端映射确认。"
+            } else {
+                "真机广播使用 Byte9~Byte39 的 31 字节 AdvData；头/MAC/CRC 由链路层处理。"
+            },
+            color = RfAmber,
+            fontSize = 13.sp
+        )
     }
 }
 

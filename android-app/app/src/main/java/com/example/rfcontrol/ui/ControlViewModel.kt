@@ -10,6 +10,8 @@ import com.example.rfcontrol.data.protocol.RfPacketBuilder
 import com.example.rfcontrol.data.protocol.StrengthLevels
 import com.example.rfcontrol.data.transport.MockRfTransport
 import com.example.rfcontrol.data.transport.RfTransport
+import com.example.rfcontrol.data.transport.TransportEvent
+import com.example.rfcontrol.data.transport.TransportEventType
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Job
@@ -33,6 +35,8 @@ data class ControlUiState(
     val rssi: Int = -46,
     val lastRxAt: String = "等待收包",
     val txCount: Long = 0,
+    val useRealBle: Boolean = false,
+    val bleCapability: String = "未检测",
     val logs: List<EventLog> = listOf(
         EventLog(LogType.Info, "原型已加载，当前使用模拟广播链路。"),
         EventLog(LogType.Warn, "42 字节为空中包预览；真机广播使用 Byte9~Byte39 的 31 字节 AdvData。")
@@ -55,12 +59,13 @@ enum class AppTab(val label: String) {
 }
 
 class ControlViewModel(
-    private val transport: RfTransport = MockRfTransport()
+    private val mockTransport: RfTransport = MockRfTransport()
 ) : ViewModel() {
+    private var realBleTransport: RfTransport? = null
     private val _uiState = MutableStateFlow(ControlUiState())
     val uiState: StateFlow<ControlUiState> = _uiState.asStateFlow()
 
-    val scannedDevices: StateFlow<List<RfDevice>> = transport.scannedDevices.stateIn(
+    val scannedDevices: StateFlow<List<RfDevice>> = mockTransport.scannedDevices.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = listOf(
@@ -75,10 +80,10 @@ class ControlViewModel(
 
     init {
         viewModelScope.launch {
-            transport.startScanning()
+            mockTransport.startScanning()
         }
         viewModelScope.launch {
-            transport.deviceStatuses.collect { status ->
+            mockTransport.deviceStatuses.collect { status ->
                 _uiState.update {
                     it.copy(
                         battery = status.battery,
@@ -89,6 +94,42 @@ class ControlViewModel(
                 }
             }
         }
+        collectTransportEvents(mockTransport)
+    }
+
+    fun configureRealBleTransport(transport: RfTransport, capabilitySummary: String) {
+        realBleTransport = transport
+        _uiState.update {
+            it.copy(
+                bleCapability = capabilitySummary,
+                logs = prependLog(it.logs, LogType.Info, "真机 BLE 能力检测：$capabilitySummary。")
+            )
+        }
+        collectTransportEvents(transport)
+    }
+
+    fun setUseRealBle(enabled: Boolean) {
+        _uiState.update {
+            it.copy(
+                useRealBle = enabled,
+                logs = prependLog(
+                    it.logs,
+                    if (enabled) LogType.Warn else LogType.Info,
+                    if (enabled) {
+                        "已切换为真机 BLE 调试广播。注意：Android API 使用 Manufacturer Data 承载核心字段。"
+                    } else {
+                        "已切换为模拟广播链路。"
+                    }
+                )
+            )
+        }
+    }
+
+    fun noteBlePermissionResult(granted: Boolean) {
+        addLog(
+            if (granted) LogType.Ok else LogType.Error,
+            if (granted) "蓝牙运行时权限已授权。" else "蓝牙运行时权限未全部授权，真机广播可能无法启动。"
+        )
     }
 
     fun selectTab(tab: AppTab) {
@@ -97,6 +138,7 @@ class ControlViewModel(
 
     fun updateDeviceId(value: String) {
         _uiState.update { it.copy(deviceId = value.uppercase().take(16)) }
+        refreshRealAdvertisementIfRunning("设备 ID 更新")
     }
 
     fun selectMode(mode: ControlMode) {
@@ -111,6 +153,7 @@ class ControlViewModel(
                 )
             )
         }
+        refreshRealAdvertisementIfRunning("模式 ${mode.label}")
     }
 
     fun updateStrength(field: StrengthField, value: Int) {
@@ -125,6 +168,7 @@ class ControlViewModel(
             }
             it.copy(levels = nextLevels)
         }
+        refreshRealAdvertisementIfRunning("${field.label}=$value")
     }
 
     fun startAdvertising() {
@@ -133,15 +177,30 @@ class ControlViewModel(
             addLog(LogType.Error, "设备 ID 格式错误，示例格式：LX_DX001。")
             return
         }
-        _uiState.update {
-            it.copy(
-                isAdvertising = true,
-                logs = prependLog(it.logs, LogType.Ok, "开始模拟广播，目标间隔 10ms。")
-            )
-        }
+        val activeTransport = activeTransport()
+        val channelName = if (state.useRealBle) "真机 BLE 调试广播" else "模拟广播"
         viewModelScope.launch {
-            transport.startAdvertising { _uiState.value.txPacket }
+            try {
+                activeTransport.startAdvertising { _uiState.value.txPacket }
+                _uiState.update {
+                    it.copy(
+                        isAdvertising = true,
+                        logs = prependLog(it.logs, LogType.Ok, "开始$channelName，界面计数按 10ms 刷新。")
+                    )
+                }
+                startTxCounter(channelName)
+            } catch (error: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        isAdvertising = false,
+                        logs = prependLog(it.logs, LogType.Error, "$channelName 启动失败：${error.message ?: "未知错误"}。")
+                    )
+                }
+            }
         }
+    }
+
+    private fun startTxCounter(channelName: String) {
         txCounterJob?.cancel()
         txCounterJob = viewModelScope.launch {
             while (true) {
@@ -149,7 +208,7 @@ class ControlViewModel(
                 _uiState.update { current ->
                     val nextCount = current.txCount + 1
                     val nextLogs = if (nextCount % 100L == 0L) {
-                        prependLog(current.logs, LogType.Tx, "持续广播中，累计发送 $nextCount 包。")
+                        prependLog(current.logs, LogType.Tx, "$channelName 持续运行，累计刷新 $nextCount 次。")
                     } else {
                         current.logs
                     }
@@ -163,12 +222,12 @@ class ControlViewModel(
         txCounterJob?.cancel()
         txCounterJob = null
         viewModelScope.launch {
-            transport.stopAdvertising()
+            activeTransport().stopAdvertising()
         }
         _uiState.update {
             it.copy(
                 isAdvertising = false,
-                logs = prependLog(it.logs, LogType.Info, "已停止模拟广播。")
+                logs = prependLog(it.logs, LogType.Info, "已停止广播。")
             )
         }
     }
@@ -177,10 +236,10 @@ class ControlViewModel(
         _uiState.update { it.copy(isScanning = enabled) }
         viewModelScope.launch {
             if (enabled) {
-                transport.startScanning()
+                mockTransport.startScanning()
                 addLog(LogType.Ok, "开始模拟扫描。")
             } else {
-                transport.stopScanning()
+                mockTransport.stopScanning()
                 addLog(LogType.Info, "已暂停模拟扫描。")
             }
         }
@@ -242,6 +301,51 @@ class ControlViewModel(
     }
 
     private fun now(): String = LocalTime.now().format(timeFormatter)
+
+    private fun activeTransport(): RfTransport {
+        return if (_uiState.value.useRealBle) realBleTransport ?: mockTransport else mockTransport
+    }
+
+    private fun collectTransportEvents(transport: RfTransport) {
+        viewModelScope.launch {
+            transport.transportEvents.collect { event ->
+                if (event.type == TransportEventType.Error) {
+                    txCounterJob?.cancel()
+                    txCounterJob = null
+                    _uiState.update { it.copy(isAdvertising = false) }
+                }
+                addLog(event.toLogType(), event.message)
+            }
+        }
+    }
+
+    private fun refreshRealAdvertisementIfRunning(reason: String) {
+        val state = _uiState.value
+        if (!state.isAdvertising || !state.useRealBle || !state.validDeviceId) return
+        val transport = realBleTransport ?: return
+        viewModelScope.launch {
+            try {
+                transport.startAdvertising { _uiState.value.txPacket }
+                addLog(LogType.Tx, "已刷新真机 BLE 调试广播：$reason。")
+            } catch (error: Throwable) {
+                txCounterJob?.cancel()
+                txCounterJob = null
+                _uiState.update { it.copy(isAdvertising = false) }
+                addLog(LogType.Error, "刷新真机 BLE 广播失败：${error.message ?: "未知错误"}。")
+            }
+        }
+    }
+
+    private fun TransportEvent.toLogType(): LogType {
+        return when (type) {
+            TransportEventType.Info -> LogType.Info
+            TransportEventType.Ok -> LogType.Ok
+            TransportEventType.Warn -> LogType.Warn
+            TransportEventType.Error -> LogType.Error
+            TransportEventType.Tx -> LogType.Tx
+            TransportEventType.Rx -> LogType.Rx
+        }
+    }
 }
 
 enum class StrengthField(val label: String, val byteNumber: Int, val max: Int) {

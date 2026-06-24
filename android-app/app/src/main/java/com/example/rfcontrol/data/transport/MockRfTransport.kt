@@ -30,6 +30,8 @@ class MockRfTransport(
 
     private val _deviceStatuses = MutableSharedFlow<DeviceStatus>(extraBufferCapacity = 8)
     override val deviceStatuses: Flow<DeviceStatus> = _deviceStatuses.asSharedFlow()
+    private val _transportEvents = MutableSharedFlow<TransportEvent>(extraBufferCapacity = 16)
+    override val transportEvents: Flow<TransportEvent> = _transportEvents.asSharedFlow()
 
     private var advertisingJob: Job? = null
     private var scanningJob: Job? = null
@@ -38,6 +40,7 @@ class MockRfTransport(
 
     override suspend fun startAdvertising(packetProvider: () -> ByteArray) {
         advertisingJob?.cancel()
+        _transportEvents.tryEmit(TransportEvent(TransportEventType.Ok, "模拟广播已启动，10ms 周期刷新发送包。"))
         advertisingJob = scope.launch {
             while (isActive) {
                 packetProvider()
@@ -49,6 +52,7 @@ class MockRfTransport(
     override suspend fun stopAdvertising() {
         advertisingJob?.cancel()
         advertisingJob = null
+        _transportEvents.tryEmit(TransportEvent(TransportEventType.Info, "模拟广播已停止。"))
     }
 
     override suspend fun startScanning() {
