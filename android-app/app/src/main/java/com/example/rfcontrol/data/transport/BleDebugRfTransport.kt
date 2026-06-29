@@ -28,7 +28,7 @@ import kotlinx.coroutines.flow.emptyFlow
  * For phone-side debugging this class broadcasts compact service data
  * carrier that contains the core protocol fields:
  *
- * UUID FFF0 + RF 01 + Byte3~Byte8 sender MAC + Byte14~Byte29
+ * UUID FFF0 + Byte1~Byte2 header + Byte3~Byte8 sender MAC + Byte14~Byte29
  *
  * This is small enough for legacy advertising and can be inspected by a BLE
  * scanner while the firmware/receiver mapping is confirmed.
@@ -97,7 +97,7 @@ class BleDebugRfTransport(context: Context) : RfTransport {
                 _transportEvents.tryEmit(
                     TransportEvent(
                         TransportEventType.Tx,
-                        "UUID=${ServiceUuid.uuid} MAC=${macHex(servicePayload.sliceArray(3..8))} DATA=${hex(servicePayload)}"
+                        "UUID=${ServiceUuid.uuid} MAC=${macHex(servicePayload.sliceArray(2..7))} DATA=${hex(servicePayload)}"
                     )
                 )
             }
@@ -135,12 +135,6 @@ class BleDebugRfTransport(context: Context) : RfTransport {
             PackageManager.PERMISSION_GRANTED
     }
 
-    private fun buildServicePayload(overAirPacket: ByteArray): ByteArray {
-        val senderMac = overAirPacket.sliceArray(2..7)
-        val coreProtocol = overAirPacket.sliceArray(13..28)
-        return byteArrayOf('R'.code.toByte(), 'F'.code.toByte(), 0x01) + senderMac + coreProtocol
-    }
-
     private fun advertiseErrorText(errorCode: Int): String {
         return when (errorCode) {
             AdvertiseCallback.ADVERTISE_FAILED_ALREADY_STARTED -> "已经在广播"
@@ -162,7 +156,14 @@ class BleDebugRfTransport(context: Context) : RfTransport {
         return bytes.joinToString(":") { "%02X".format(Locale.US, it.toInt() and 0xFF) }
     }
 
-    private companion object {
+    internal companion object {
         val ServiceUuid: ParcelUuid = ParcelUuid.fromString("0000FFF0-0000-1000-8000-00805F9B34FB")
+
+        fun buildServicePayload(overAirPacket: ByteArray): ByteArray {
+            val header = overAirPacket.sliceArray(0..1)
+            val senderMac = overAirPacket.sliceArray(2..7)
+            val coreProtocol = overAirPacket.sliceArray(13..28)
+            return header + senderMac + coreProtocol
+        }
     }
 }
