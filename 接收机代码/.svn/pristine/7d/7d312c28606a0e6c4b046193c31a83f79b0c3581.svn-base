@@ -1,0 +1,23 @@
+﻿
+#ifndef __KEY_H
+#define __KEY_H
+
+
+//=========按键=======================
+
+#define		KEY_1	 PA.0//定义按键的脚位
+
+bit KeyFlag_1;  			//启动按键检测
+bit JugeKeyStateFlag_1;		//消抖结束-->判断按键状态
+byte RemoveKey10ms_1;		//按键消抖检测时间
+bit LongKeyProFlag_1;		//防止重复检测
+byte KeyCount10ms_1;		//按键计时
+	
+bit ShortKeyFlag_1;
+bit LongKeyFlag_1;
+
+
+
+
+
+#endif

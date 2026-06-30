@@ -2,19 +2,20 @@ package com.example.rfcontrol.data.transport
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.bluetooth.le.AdvertisingSet
+import android.bluetooth.le.AdvertisingSetCallback
+import android.bluetooth.le.AdvertisingSetParameters
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
-import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
-import android.bluetooth.le.AdvertiseSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.ParcelUuid
 import androidx.core.content.ContextCompat
 import com.example.rfcontrol.data.protocol.DeviceStatus
 import com.example.rfcontrol.data.protocol.RfDevice
 import com.example.rfcontrol.data.protocol.RfPacketBuilder
+import java.nio.charset.StandardCharsets
 import java.util.Locale
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -23,15 +24,11 @@ import kotlinx.coroutines.flow.emptyFlow
 /**
  * Real BLE advertising debug transport.
  *
- * Android's public BluetoothLeAdvertiser does not provide a raw AdvData API.
- * The protocol's Byte9~Byte39 31-byte AdvData cannot be injected byte-for-byte.
- * For phone-side debugging this class broadcasts compact service data
- * carrier that contains the core protocol fields:
- *
- * UUID FFF0 + Byte1~Byte2 header + Byte3~Byte8 sender MAC + Byte14~Byte29
- *
- * This is small enough for legacy advertising and can be inspected by a BLE
- * scanner while the firmware/receiver mapping is confirmed.
+ * Android can request a legacy, non-connectable, non-scannable advertising set
+ * so the link-layer PDU type targets ADV_NONCONN_IND. The public API still
+ * cannot inject arbitrary raw AdvData bytes. This transport therefore sets the
+ * Bluetooth local name to the protocol name field and asks Android to emit the
+ * V1.6 Complete Local Name and Manufacturer Specific Data structures.
  */
 class BleDebugRfTransport(context: Context) : RfTransport {
     private val appContext = context.applicationContext
@@ -45,7 +42,8 @@ class BleDebugRfTransport(context: Context) : RfTransport {
     override val scannedDevices: Flow<List<RfDevice>> = emptyFlow()
     override val deviceStatuses: Flow<DeviceStatus> = emptyFlow()
 
-    private var advertiseCallback: AdvertiseCallback? = null
+    private var advertisingSetCallback: AdvertisingSetCallback? = null
+    private var originalBluetoothName: String? = null
 
     val isBleSupported: Boolean
         get() = appContext.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)
@@ -57,7 +55,7 @@ class BleDebugRfTransport(context: Context) : RfTransport {
         get() = advertiser != null
 
     fun capabilitySummary(): String {
-        return "BLE=${yesNo(isBleSupported)} 蓝牙=${yesNo(isBluetoothEnabled)} 广播=${yesNo(isLegacyAdvertisingSupported)}"
+        return "BLE=${yesNo(isBleSupported)} 蓝牙=${yesNo(isBluetoothEnabled)} ADV_SET=${yesNo(isLegacyAdvertisingSupported)}"
     }
 
     @SuppressLint("MissingPermission")
@@ -74,55 +72,72 @@ class BleDebugRfTransport(context: Context) : RfTransport {
             "空中包预览必须是 ${RfPacketBuilder.OverAirPacketSize} 字节。"
         }
 
-        val legacyAdvData = overAirPacket.sliceArray(8..38)
-        check(legacyAdvData.size == RfPacketBuilder.LegacyAdvDataSize) {
-            "Legacy AdvData 必须是 ${RfPacketBuilder.LegacyAdvDataSize} 字节。"
-        }
+        val protocolAdvData = buildProtocolAdvData(overAirPacket)
+        val localName = buildProtocolLocalName(protocolAdvData)
+        updateBluetoothName(localName)
 
-        val servicePayload = buildServicePayload(overAirPacket)
-        val settings = AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+        val parametersBuilder = AdvertisingSetParameters.Builder()
+            .setLegacyMode(true)
             .setConnectable(false)
-            .setTimeout(0)
-            .build()
-        val data = AdvertiseData.Builder()
-            .setIncludeDeviceName(false)
-            .setIncludeTxPowerLevel(false)
-            .addServiceData(ServiceUuid, servicePayload)
-            .build()
+            .setScannable(false)
+            .setInterval(AdvertisingSetParameters.INTERVAL_LOW)
+            .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_HIGH)
+        val discoverableSupported = trySetDiscoverable(parametersBuilder)
+        val parameters = parametersBuilder.build()
+        val carrierData = buildLocalNameAdvertiseData(protocolAdvData)
 
-        val callback = object : AdvertiseCallback() {
-            override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
+        val callback = object : AdvertisingSetCallback() {
+            override fun onAdvertisingSetStarted(advertisingSet: AdvertisingSet?, txPower: Int, status: Int) {
+                if (status != ADVERTISE_SUCCESS) {
+                    _transportEvents.tryEmit(
+                        TransportEvent(
+                            TransportEventType.Error,
+                            "真机 ADV_NONCONN_IND 广播启动失败：${advertiseErrorText(status)}。"
+                        )
+                    )
+                    return
+                }
                 _transportEvents.tryEmit(
                     TransportEvent(
                         TransportEventType.Tx,
-                        "UUID=${ServiceUuid.uuid} MAC=${macHex(servicePayload.sliceArray(2..7))} DATA=${hex(servicePayload)}"
+                        "TYPE=ADV_NONCONN_IND Flags=${flagsText(discoverableSupported)} Name=${localName} NameAd=${hex(buildNameAdStructure(protocolAdvData))} ManufacturerAd=${hex(buildManufacturerAdStructure(protocolAdvData))} AdvData=${hex(protocolAdvData)}"
                     )
                 )
             }
 
-            override fun onStartFailure(errorCode: Int) {
+            override fun onAdvertisingDataSet(advertisingSet: AdvertisingSet?, status: Int) {
+                if (status != ADVERTISE_SUCCESS) {
+                    _transportEvents.tryEmit(
+                        TransportEvent(
+                            TransportEventType.Error,
+                            "广播数据设置失败：${advertiseErrorText(status)}。"
+                        )
+                    )
+                }
+            }
+
+            override fun onAdvertisingSetStopped(advertisingSet: AdvertisingSet?) {
                 _transportEvents.tryEmit(
                     TransportEvent(
-                        TransportEventType.Error,
-                        "真机 BLE 广播启动失败：${advertiseErrorText(errorCode)}。"
+                        TransportEventType.Info,
+                        ""
                     )
                 )
             }
         }
 
-        advertiseCallback = callback
-        activeAdvertiser.startAdvertising(settings, data, callback)
+        advertisingSetCallback = callback
+        activeAdvertiser.startAdvertisingSet(parameters, carrierData, null, null, null, callback)
     }
 
     @SuppressLint("MissingPermission")
     override suspend fun stopAdvertising() {
-        val callback = advertiseCallback ?: return
+        val callback = advertisingSetCallback ?: return
         if (hasAdvertisePermission()) {
-            advertiser?.stopAdvertising(callback)
+            advertiser?.stopAdvertisingSet(callback)
         }
-        advertiseCallback = null
+        advertisingSetCallback = null
+        restoreBluetoothName()
         _transportEvents.tryEmit(TransportEvent(TransportEventType.Info, ""))
     }
 
@@ -137,11 +152,11 @@ class BleDebugRfTransport(context: Context) : RfTransport {
 
     private fun advertiseErrorText(errorCode: Int): String {
         return when (errorCode) {
-            AdvertiseCallback.ADVERTISE_FAILED_ALREADY_STARTED -> "已经在广播"
-            AdvertiseCallback.ADVERTISE_FAILED_DATA_TOO_LARGE -> "广播数据过大"
-            AdvertiseCallback.ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> "手机不支持该广播功能"
-            AdvertiseCallback.ADVERTISE_FAILED_INTERNAL_ERROR -> "蓝牙栈内部错误"
-            AdvertiseCallback.ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "广播实例过多"
+            AdvertisingSetCallback.ADVERTISE_FAILED_ALREADY_STARTED -> "已经在广播"
+            AdvertisingSetCallback.ADVERTISE_FAILED_DATA_TOO_LARGE -> "广播数据过大"
+            AdvertisingSetCallback.ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> "手机不支持该广播功能"
+            AdvertisingSetCallback.ADVERTISE_FAILED_INTERNAL_ERROR -> "蓝牙栈内部错误"
+            AdvertisingSetCallback.ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "广播实例过多"
             else -> "未知错误码 $errorCode"
         }
     }
@@ -152,18 +167,97 @@ class BleDebugRfTransport(context: Context) : RfTransport {
         return bytes.joinToString(" ") { "%02X".format(Locale.US, it.toInt() and 0xFF) }
     }
 
-    private fun macHex(bytes: ByteArray): String {
-        return bytes.joinToString(":") { "%02X".format(Locale.US, it.toInt() and 0xFF) }
+    private fun flagsText(discoverableSupported: Boolean): String {
+        return if (discoverableSupported) "02 01 06" else "UNSUPPORTED_ON_ANDROID_${Build.VERSION.SDK_INT}"
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun updateBluetoothName(localName: String) {
+        val activeAdapter = adapter ?: return
+        if (originalBluetoothName == null) {
+            originalBluetoothName = activeAdapter.name
+        }
+        if (activeAdapter.name != localName) {
+            val updated = activeAdapter.setName(localName)
+            check(updated) { "无法设置蓝牙名称为协议设备名：$localName" }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun restoreBluetoothName() {
+        val name = originalBluetoothName ?: return
+        adapter?.setName(name)
+        originalBluetoothName = null
     }
 
     internal companion object {
-        val ServiceUuid: ParcelUuid = ParcelUuid.fromString("0000FFF0-0000-1000-8000-00805F9B34FB")
+        private const val CompanyId = 0x0000
 
-        fun buildServicePayload(overAirPacket: ByteArray): ByteArray {
-            val header = overAirPacket.sliceArray(0..1)
-            val senderMac = overAirPacket.sliceArray(2..7)
-            val coreProtocol = overAirPacket.sliceArray(13..28)
-            return header + senderMac + coreProtocol
+        fun buildProtocolAdvData(overAirPacket: ByteArray): ByteArray {
+            check(overAirPacket.size == RfPacketBuilder.OverAirPacketSize) {
+                "空中包预览必须是 ${RfPacketBuilder.OverAirPacketSize} 字节。"
+            }
+            return overAirPacket.sliceArray(8..38).also {
+                check(it.size == RfPacketBuilder.LegacyAdvDataSize) {
+                    "Legacy AdvData 必须是 ${RfPacketBuilder.LegacyAdvDataSize} 字节。"
+                }
+            }
+        }
+
+        fun buildProtocolLocalName(protocolAdvData: ByteArray): String {
+            check(protocolAdvData.size == RfPacketBuilder.LegacyAdvDataSize) {
+                "协议 AdvData 必须是 ${RfPacketBuilder.LegacyAdvDataSize} 字节。"
+            }
+            check(protocolAdvData[0].toInt() == 0x09 && protocolAdvData[1].toInt() == 0x09) {
+                "协议 AdvData 必须包含 09 09 名称字段。"
+            }
+            return String(protocolAdvData.sliceArray(2..9), StandardCharsets.US_ASCII)
+        }
+
+        fun buildLocalNameAdvertiseData(protocolAdvData: ByteArray): AdvertiseData {
+            buildProtocolLocalName(protocolAdvData)
+            return AdvertiseData.Builder()
+                .setIncludeDeviceName(true)
+                .setIncludeTxPowerLevel(false)
+                .addManufacturerData(CompanyId, buildManufacturerPayload(protocolAdvData))
+                .build()
+        }
+
+        fun buildNameAdStructure(protocolAdvData: ByteArray): ByteArray {
+            check(protocolAdvData.size == RfPacketBuilder.LegacyAdvDataSize) {
+                "协议 AdvData 必须是 ${RfPacketBuilder.LegacyAdvDataSize} 字节。"
+            }
+            return protocolAdvData.sliceArray(0..9)
+        }
+
+        fun buildManufacturerAdStructure(protocolAdvData: ByteArray): ByteArray {
+            check(protocolAdvData.size == RfPacketBuilder.LegacyAdvDataSize) {
+                "协议 AdvData 必须是 ${RfPacketBuilder.LegacyAdvDataSize} 字节。"
+            }
+            return protocolAdvData.sliceArray(10..30)
+        }
+
+        fun buildManufacturerPayload(protocolAdvData: ByteArray): ByteArray {
+            val manufacturerAd = buildManufacturerAdStructure(protocolAdvData)
+            check(manufacturerAd[0].toInt() == 0x14 && (manufacturerAd[1].toInt() and 0xFF) == 0xFF) {
+                "协议 AdvData 必须包含 14 FF 厂商字段。"
+            }
+            check(manufacturerAd[2].toInt() == 0x00 && manufacturerAd[3].toInt() == 0x00) {
+                "V1.6 Company ID 必须是 00 00。"
+            }
+            return manufacturerAd.sliceArray(4..20)
+        }
+
+        fun trySetDiscoverable(builder: AdvertisingSetParameters.Builder): Boolean {
+            return try {
+                val method = builder.javaClass.getMethod("setDiscoverable", Boolean::class.javaPrimitiveType)
+                method.invoke(builder, true)
+                true
+            } catch (_: ReflectiveOperationException) {
+                false
+            } catch (_: RuntimeException) {
+                false
+            }
         }
     }
 }

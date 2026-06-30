@@ -1,0 +1,296 @@
+﻿#ifndef __USER_H
+#define __USER_H
+
+
+
+#define uint8_t     byte
+#define uint16_t    word
+#define uint32_t    dword
+
+
+//=========模式震动=======================
+uint8_t PwmOpenFlag;  				 //1:open 2:close
+uint8_t ModeSegFlag; 				 //0:模式0 1:模式1
+uint8_t ModeSegOKFg;				 //模式切换标志 1：需要切换  0：切换完成	
+uint8_t ModeSegCnt;					 //间隔
+uint8_t PwmShockDutyCnt = 37;			 //模式7 震动变化占空比		
+uint8_t PwmPatDutyCnt = 37;				//模式7 拍打变化占空比		
+uint16_t OpenPWMCntms;    			/* 开PWM */
+uint16_t ClosePWMCntms;   			/* 关PWM */
+
+
+
+
+//=========UART=======================
+// UART_EN_FG		=>	1;			//UART 使能  0：失能 1：使能
+// #define		UART_EN_FG		
+
+#define		UART_EN_FG		1	 	//UART 使能  0：失能 1：使能
+
+//PA.5脚为UART发送端口，使用软件模拟UART发送数据
+UART_Out		BIT	PA.5;				//发送端口
+LOG_BUFF_Size	=>	10	//10组数据
+
+#define		AD_LOG			 (0xAD)
+#define		KEY_1_SHORT_LOG	 (0xB1)
+#define		KEY_2_SHORT_LOG	 (0xB2)
+#define		KEY_1_LONG_LOG	 (0xB3)
+#define		KEY_2_LONG_LOG	 (0xB4)
+#define		RX_LOG	 		 (0xC1)
+#define		LOG_Ing	 		 (0xD1)
+
+
+byte	Log_Buf_Out[LOG_BUFF_Size];//定义十组需要发送的数据
+
+
+
+//=======SPI+RF=========
+SPI_CSN		=>	PA.7
+SPI_CLK		=>	PA.6
+SPI_DATA	=>	PA.3
+
+.RAMADR 0X00  //地址定义为0
+word gw_Point;
+
+
+// uint16_t rf_adv_channel[3] = {RF_ADV_CHANNEL_37, RF_ADV_CHANNEL_38, RF_ADV_CHANNEL_39};
+uint16_t rf_adv_channel[3];
+
+uint8_t adv_idx = 0;
+
+
+/*
+
+0x30 --> 0
+0x31 --> 1
+0x32 --> 2
+0x33 --> 3
+0x34 --> 4
+0x35 --> 5
+0x36 --> 6
+0x37 --> 7
+0x38 --> 8
+0x39 --> 9
+0x3A --> :  待机模式
+
+*/
+
+#define TX_MODE         1
+#define RX_MODE         0
+// TRANS_MODE  =>  0 // RX_MODE//TX_MODE
+#define TRANS_MODE         TX_MODE
+
+uint8_t RF_InitFg = 0;
+
+
+#if (TRANS_MODE == TX_MODE)	
+	uint8_t WorkMode = 0x3A;
+	uint8_t SendWorkMode = 0x3A;
+	uint8_t SendCnt = 0;
+
+#elif (TRANS_MODE == RX_MODE)
+	uint8_t WorkMode = 0x00;
+    byte RX_len = 0;
+
+#endif
+
+
+/* RF Register Address */
+#define CFG_TOP                       (0x00)
+#define EN_AA                         (0x01)
+#define EN_RXADDR                     (0x02)
+#define SETUP_AW                      (0x03)
+#define SETUP_RETR                    (0x04)
+#define RF_CH                         (0x05)
+#define SETUP_RF                      (0x06)
+#define STATUS                        (0x07)
+#define OBSERVE_TX                    (0x08)
+#define RSSI                          (0x09)
+#define RX_ADDR_P0                    (0x0A)
+#define RX_ADDR_P1                    (0x0B)
+#define RX_ADDR_P2_TOP5               (0x0C)    /*!< */
+
+#define BER_RESULT                    (0x0D)
+#define AGC_SETTING                   (0x0E)
+#define PGA_SETTING                   (0x0F)
+#define TX_ADDR                       (0x10)
+#define RX_PW_PX                      (0x11)
+#define ANALOG_CFG0                   (0x12)
+#define ANALOG_CFG1                   (0x13)
+#define ANALOG_CFG2                   (0x14)
+#define ANALOG_CFG3                   (0x15)
+#define STATUS_FIFO                   (0x17)
+#define RSSIREC                       (0x18)
+#define TXPROC_CFG                    (0x19)
+#define RXPROC_CFG                    (0x1A)
+#define DYNPD                         (0x1C)
+#define FEATURE                       (0x1D)
+#define RAMP_CFG                      (0x1E)
+#ifdef XC820
+#define RXPROC_CFG_H                  (0x1F)
+#define PREAMBLE                      (0x20)
+#define GUARD                         (0x21)
+#define CMD_BYTE                      (0x22)
+#define PEND_RXFRM_LEN                (0x23)
+#define HW_CONFIG                     (0x24)
+#define PBT_CONFIG                    (0x25)
+#define PBT_TIMER                     (0x26)
+#define PBT_SYNC_TIME                 (0x27)
+#endif
+/* RF Command Code */
+#define R_REG                         0x00
+#define W_REG                         0x20
+#define R_RX_PL_WID                   0x60
+#define R_RX_PLOAD                    0x61
+#define W_TX_PLOAD                    0xA0
+#define W_TX_PLOAD_NOACK              0xB0
+#define W_ACK_PLOAD                   0xA8
+#define FLUSH_TX                      0xE1
+#define FLUSH_RX                      0xE2
+#define REUSE_TX_PL                   0xE3
+
+#define CMD_NOP                       0xFF
+
+
+
+/* STATUS Interrupt status */
+#define RX_DR          (0x1 << 6)
+#define TX_DS          (0x1 << 5)
+#define MAX_RT         (0x1 << 4)
+/* FIFO status */
+#define STAT_TX_REUSE  (0x1 << 6)
+#define STAT_TX_FULL   (0x1 << 5)
+#define STAT_TX_EMPTY  (0x1 << 4)
+#define STAT_RX_FULL   (0x1 << 1)
+#define STAT_RX_EMPTY  (0x1 << 0)
+
+#define ENAA_SET_VAL 0x41
+
+	// ((x)[(y)>>3] |=  (1U << ((y)&7)));
+	// ((x)[(y)>>3] &= ~(1U << ((y)&7)));
+/*------------------------------------------------------------------------------------
+	                                     Macros
+ -------------------------------------------------------------------------------------*/
+
+#define RF_ADV_CHANNEL_37   2402
+#define RF_ADV_CHANNEL_38   2426
+#define RF_ADV_CHANNEL_39   2480
+
+#define DR_1M          0x00 // 0x02
+#define DR_2M          0x08
+#define DR_250K        0X20
+#define DR_125K        0X28
+
+#define RF_DR          DR_250K
+#define RF_PWR         0x0C /*!< Default */
+
+
+//蓝牙广播包
+#define PIPE0_ADV_DATA_LEN  42
+
+// PIPE0_ADV_DATA_LEN 	=>  42
+byte tx_buff[PIPE0_ADV_DATA_LEN];
+byte rx_buff[64];
+
+
+#define ADDR_LEN  5
+// ADDR_LEN  =>    5
+byte tx_adv_Addr[ADDR_LEN];
+word rx_adv_Addr;
+
+
+
+//=========ADC=======================
+
+//PC2脚为ADC输入，分辨率为12位，测得的ADC值范围为0~4095；
+// byte	data;//分辨率为8测得的ADC值
+word	ADCdata_12bit;//分辨率为12测得的ADC值
+word	PC2_AD_Data;
+byte    ADCnt = 16;//测量16笔数据
+Eword	_Temp = 0;//16笔数据之和
+
+
+//=========PWM=======================
+
+//PB4脚为TIM2_PWM输出，PB5脚为TIM3_PWM输出
+#define		TIM2_PWM_IO	 PB4//定义TIM2_PWM的脚位 PB2, PB4, PA3
+#define		TIM3_PWM_IO	 PB6//定义TIM3_PWM的脚位 PB5, PB6, PB7
+// #define		LPWMG1_IO	 PC3//定义TIM3_PWM的脚位 PB5, PB6, PB7
+// byte	Duty;			//PWM占空比
+
+
+
+//==========Timer======================
+
+byte	Time_1ms_Cnt;
+byte	ADC_1ms_Cnt;
+word	LOG_1ms_Cnt;
+word	DEBUG_1ms_Cnt;
+word	reload_T16;
+word	LowPower_1ms_Cnt;
+
+
+#define		TASK_3S	 	 300   // 
+#define		TASK_1S	     100	// 
+#define		TASK_200MS	 20    // 
+#define		TASK_20MS	 2	// 
+#define		TASK_10MS	 1	// 
+
+
+//==========key======================
+
+//修改按键需修改外部中断
+//PC.0脚为按键输入，低电平有效
+#define		KEY_1_IO	 PB.0//定义按键的脚位
+
+bit KeyFlag_1;  			//启动按键检测
+bit JugeKeyStateFlag_1;		//消抖结束-->判断按键状态
+uint8_t RemoveKey1ms_1;		//按键消抖检测时间
+bit LongKeyProFlag_1;		//防止重复检测
+uint16_t KeyCount1ms_1;		//按键计时
+	
+bit ShortKeyFlag_1;
+bit LongKeyFlag_1;
+
+#define		KEY_2_IO	 PA.4//定义按键的脚位
+
+bit KeyFlag_2;  			//启动按键检测
+bit JugeKeyStateFlag_2;		//消抖结束-->判断按键状态
+uint16_t RemoveKey1ms_2;		//按键消抖检测时间
+bit LongKeyProFlag_2;		//防止重复检测
+uint16_t KeyCount1ms_2;		//按键计时
+	
+bit ShortKeyFlag_2;
+bit LongKeyFlag_2;
+
+//==========Change======================
+
+#define		RPIN_IO	     PB.5//
+#define		CHRG_IO	     PB.1//
+#define		LOW_P_IO	 PC.0		//定义LED灯的引脚
+
+
+uint8_t ChargingStatus = 0;		//
+uint16_t BlinkCnt = 0;		//
+uint8_t BlinkFg = 0;		//
+
+
+//==========LED======================
+
+//
+//PB.7脚为LED输出，高电平有效
+bit		LED_1			:	PC.3		//定义LED灯的引脚
+bit		LED_2			:	PC.1		//定义LED灯的引脚
+bit		LED_3			:	PB.3		//定义LED灯的引脚
+bit		LED_4			:	PB.2		//定义LED灯的引脚
+
+
+//==========LED======================
+
+//PB.7脚为LED输出，低电平有效
+
+
+byte	LowPower_CLKMD_BK;
+
+
+#endif

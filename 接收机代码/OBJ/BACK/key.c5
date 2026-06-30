@@ -1,0 +1,79 @@
+﻿
+//==========按键处理======================
+
+//==========key======================
+
+#define		KEY_1	 PA.0//定义按键的脚位
+
+
+bit KeyFlag_1;  			//启动按键检测
+bit JugeKeyStateFlag_1;		//消抖结束-->判断按键状态
+byte RemoveKey10ms_1;		//按键消抖检测时间
+bit LongKeyProFlag_1;		//防止重复检测
+byte KeyCount10ms_1;		//按键计时
+	
+bit ShortKeyFlag_1;
+bit LongKeyFlag_1;
+
+
+
+/* 按键判断 */
+void KeyJudge_1(void)
+{
+	//按键中断标志
+	if(KeyFlag_1)
+	{
+		RemoveKey10ms_1++;
+		if(RemoveKey10ms_1 >= 5)
+		{
+			if(KEY_1 == 0) //有效按下--》判断短按长按
+			{
+				RemoveKey10ms_1 = 0;
+				JugeKeyStateFlag_1 = 1;
+			}
+			else //松开 无效按下
+			{
+				RemoveKey10ms_1 = 0;
+				KeyFlag_1 = 0;
+			}
+			
+			
+		}
+	}
+
+	if(JugeKeyStateFlag_1)
+	{
+		KeyCount10ms_1++;
+		if(KeyCount10ms_1 <= 100) 
+		{
+			if(KEY_1 == 1) //松开-->短按
+			{
+				KeyCount10ms_1 = 0;
+				KeyFlag_1 = 0;
+				JugeKeyStateFlag_1 = 0;
+				ShortKeyFlag_1 = 1;
+			}
+			
+		}
+		else  //长按1S
+		{
+			if(KEY_1 == 1) //松开
+			{
+				KeyCount10ms_1 = 0;
+				KeyFlag_1 = 0;
+				JugeKeyStateFlag_1 = 0;  //重新开始检测按键
+				LongKeyProFlag_1 = 0;
+			}
+			else if(!LongKeyProFlag_1 && !KEY_1)
+			{
+				LongKeyProFlag_1 = 1;  // 防重复
+				LongKeyFlag_1 = 1;     // 触发长按
+			}
+
+			
+			
+		}
+		
+	}
+	
+}	

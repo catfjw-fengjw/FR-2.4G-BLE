@@ -22,7 +22,8 @@ import kotlinx.coroutines.launch
 data class ControlUiState(
     val deviceId: String = "111111",
     val senderMac: String = RfPacketBuilder.DefaultSenderMac,
-    val broadcastUuid: String = "0000FFF0-0000-1000-8000-00805F9B34FB",
+    val targetPduType: String = "ADV_NONCONN_IND",
+    val targetPduHeader: String = "42 25",
     val selectedMode: ControlMode = ControlMode.Mode1,
     val levels: StrengthLevels = StrengthLevels(),
     val isAdvertising: Boolean = false,
@@ -35,6 +36,21 @@ data class ControlUiState(
 
     val txPacket: ByteArray
         get() = RfPacketBuilder.buildControlPacket(deviceId, selectedMode, levels, senderMac)
+
+    val txAdvData: ByteArray
+        get() = RfPacketBuilder.buildControlAdvData(deviceId, selectedMode, levels, senderMac)
+
+    val txPacketHex: String
+        get() = RfPacketBuilder.toHex(txPacket)
+
+    val txAdvDataHex: String
+        get() = RfPacketBuilder.toHex(txAdvData)
+
+    val txNameAdHex: String
+        get() = RfPacketBuilder.toHex(txAdvData.sliceArray(0..9))
+
+    val txManufacturerAdHex: String
+        get() = RfPacketBuilder.toHex(txAdvData.sliceArray(10..30))
 }
 
 class ControlViewModel : ViewModel() {
@@ -58,7 +74,12 @@ class ControlViewModel : ViewModel() {
                     }
                 } else if (event.type == TransportEventType.Error) {
                     stopTxTimer()
-                    _uiState.update { it.copy(isAdvertising = false) }
+                    _uiState.update {
+                        it.copy(
+                            isAdvertising = false,
+                            logs = prependLog(it.logs, LogType.Error, event.message)
+                        )
+                    }
                 }
             }
         }
@@ -67,12 +88,17 @@ class ControlViewModel : ViewModel() {
     fun noteBlePermissionResult(granted: Boolean) {
         if (!granted) {
             stopTxTimer()
-            _uiState.update { it.copy(isAdvertising = false, logs = emptyList()) }
+            _uiState.update {
+                it.copy(
+                    isAdvertising = false,
+                    logs = prependLog(it.logs, LogType.Error, "蓝牙广播权限未授权")
+                )
+            }
         }
     }
 
     fun updateDeviceId(value: String) {
-        _uiState.update { it.copy(deviceId = value.uppercase().take(8)) }
+        _uiState.update { it.copy(deviceId = value.uppercase().take(6)) }
     }
 
     fun startAdvertising() {
@@ -83,10 +109,15 @@ class ControlViewModel : ViewModel() {
             try {
                 _uiState.update { it.copy(isAdvertising = true, txCount = 0, logs = emptyList()) }
                 transport.startAdvertising { _uiState.value.txPacket }
-                startOneSecondTimer(transport)
+                startOneSecondTimer()
             } catch (error: Throwable) {
                 stopTxTimer()
-                _uiState.update { it.copy(isAdvertising = false, logs = emptyList()) }
+                _uiState.update {
+                    it.copy(
+                        isAdvertising = false,
+                        logs = prependLog(it.logs, LogType.Error, error.message ?: "广播启动失败")
+                    )
+                }
             }
         }
     }
@@ -99,16 +130,16 @@ class ControlViewModel : ViewModel() {
         _uiState.update { it.copy(isAdvertising = false) }
     }
 
-    private fun startOneSecondTimer(transport: RfTransport) {
+    private fun startOneSecondTimer() {
         stopTxTimer()
         txTimerJob = viewModelScope.launch {
             while (true) {
                 delay(1_000)
-                try {
-                    transport.startAdvertising { _uiState.value.txPacket }
-                } catch (error: Throwable) {
-                    stopTxTimer()
-                    _uiState.update { it.copy(isAdvertising = false) }
+                _uiState.update {
+                    it.copy(
+                        txCount = it.txCount + 1,
+                        logs = prependTxLog(it.logs, txLogMessage(it))
+                    )
                 }
             }
         }
@@ -120,7 +151,15 @@ class ControlViewModel : ViewModel() {
     }
 
     private fun prependTxLog(logs: List<EventLog>, message: String): List<EventLog> {
-        return (listOf(EventLog(LogType.Tx, "${now()}  $message")) + logs).take(8)
+        return prependLog(logs, LogType.Tx, message)
+    }
+
+    private fun prependLog(logs: List<EventLog>, type: LogType, message: String): List<EventLog> {
+        return (listOf(EventLog(type, "${now()}  $message")) + logs).take(8)
+    }
+
+    private fun txLogMessage(state: ControlUiState): String {
+        return "TYPE=${state.targetPduType} NameAd=${state.txNameAdHex} ManufacturerAd=${state.txManufacturerAdHex} AdvData=${state.txAdvDataHex}"
     }
 
     private fun now(): String = LocalTime.now().format(timeFormatter)

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -121,7 +122,7 @@ private fun SimpleControlConsole(state: ControlUiState, viewModel: ControlViewMo
                     label = { Text("设备 ID") },
                     supportingText = {
                         Text(
-                            text = if (state.validDeviceId) "默认设备 ID：111111" else "请输入 1~8 位数字或大写字母",
+                            text = if (state.validDeviceId) "默认设备 ID：111111，广播名称 LX${state.deviceId}" else "请输入 6 位数字或大写字母",
                             color = if (state.validDeviceId) RfTeal else RfRed,
                             fontWeight = FontWeight.Bold
                         )
@@ -165,12 +166,17 @@ private fun SimpleControlConsole(state: ControlUiState, viewModel: ControlViewMo
 
             Panel {
                 MetricRow("设备 ID", state.deviceId)
-                MetricRow("发送 MAC", state.senderMac)
-                MetricRow("UUID", state.broadcastUuid)
+                MetricRow("预览 MAC", state.senderMac)
+                MetricRow("目标 PDU", state.targetPduType)
+                MetricRow("目标包头", state.targetPduHeader)
+                MetricRow("AdvData 长度", "${state.txAdvData.size} 字节")
                 MetricRow("发送计数", state.txCount.toString())
                 MetricRow("广播状态", if (state.isAdvertising) "运行中" else "停止")
+                MetricRow("说明", "真实 AdvA/CRC 由蓝牙控制器生成")
             }
 
+            HexPanel("协议 AdvData Byte9~Byte39", state.txAdvDataHex)
+            HexPanel("完整 42 字节预览", state.txPacketHex)
             LogPanel(state.logs.take(8))
         }
     }
@@ -186,6 +192,27 @@ private fun MetricRow(label: String, value: String) {
     ) {
         Text(label, color = RfMuted, fontSize = 14.sp)
         Text(value, color = RfText, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun HexPanel(title: String, value: String) {
+    Panel {
+        Text(title, color = RfText, fontSize = 18.sp, fontWeight = FontWeight.Black)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            value,
+            color = RfTeal,
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFF11110F))
+                .border(1.dp, RfLineSoft, RoundedCornerShape(6.dp))
+                .padding(10.dp),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 

@@ -6,11 +6,13 @@ object RfPacketBuilder {
     const val OverAirPacketSize = 42
     const val LegacyAdvDataSize = 31
     const val DefaultSenderMac = "11:11:11:11:11:11"
+    private const val CompanyIdLsb = 0x00
+    private const val CompanyIdMsb = 0x00
     private const val AdvDataStartIndex = 8
     private const val AdvDataEndIndex = 38
 
     fun isDeviceIdValid(deviceId: String): Boolean {
-        return Regex("^[0-9A-Z]{1,8}$").matches(deviceId)
+        return Regex("^[0-9A-Z]{6}$").matches(deviceId)
     }
 
     @JvmOverloads
@@ -26,18 +28,20 @@ object RfPacketBuilder {
         parseMac(senderMac).forEachIndexed { index, value ->
             bytes[2 + index] = value.toByte()
         }
-        bytes[8] = 0x02
-        bytes[9] = 0x01
-        bytes[10] = 0x06
-        bytes[11] = 0x0B
-        bytes[12] = 0x09
+        bytes[8] = 0x09
+        bytes[9] = 0x09
+        bytes[10] = 0x4C
+        bytes[11] = 0x58
 
         deviceIdToBytes(deviceId).forEachIndexed { index, value ->
-            bytes[13 + index] = value.toByte()
+            bytes[12 + index] = value.toByte()
         }
 
-        bytes[21] = mode.value.toByte()
-        bytes[22] = RfChecksum.appChecksum(bytes).toByte()
+        bytes[18] = 0x14
+        bytes[19] = 0xFF.toByte()
+        bytes[20] = CompanyIdLsb.toByte()
+        bytes[21] = CompanyIdMsb.toByte()
+        bytes[22] = mode.value.toByte()
         bytes[23] = levels.vibration.coerceIn(0, 100).toByte()
         bytes[24] = levels.slap.coerceIn(0, 100).toByte()
         bytes[25] = levels.suction.coerceIn(0, 100).toByte()
@@ -81,8 +85,7 @@ object RfPacketBuilder {
         macBytes.forEachIndexed { index, value ->
             bytes[2 + index] = value.toByte()
         }
-        bytes[21] = 0x00
-        bytes[22] = RfChecksum.deviceChecksum(macBytes).toByte()
+        bytes[22] = 0x00
         bytes[23] = battery.coerceIn(0, 100).toByte()
         return bytes
     }
@@ -96,7 +99,7 @@ object RfPacketBuilder {
     }
 
     private fun deviceIdToBytes(deviceId: String): IntArray {
-        val normalized = deviceId.padEnd(8, '0').take(8)
+        val normalized = deviceId.uppercase(Locale.US).padEnd(6, '0').take(6)
         return normalized.map { it.code and 0xFF }.toIntArray()
     }
 

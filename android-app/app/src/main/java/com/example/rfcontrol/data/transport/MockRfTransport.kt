@@ -20,9 +20,9 @@ class MockRfTransport(
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.Default)
 ) : RfTransport {
     private val devices = listOf(
-        RfDevice("LX_DX001", "01:01:01:00:00:01", -46, 86, "刚刚"),
-        RfDevice("LX_DX014", "01:01:02:00:00:0E", -63, 72, "4 秒前"),
-        RfDevice("LX_DX108", "01:03:08:00:00:6C", -71, 48, "12 秒前")
+        RfDevice("111111", "01:01:01:00:00:01", -46, 86, "刚刚"),
+        RfDevice("111114", "01:01:02:00:00:0E", -63, 72, "4 秒前"),
+        RfDevice("111108", "01:03:08:00:00:6C", -71, 48, "12 秒前")
     )
 
     private val _scannedDevices = MutableStateFlow(devices)

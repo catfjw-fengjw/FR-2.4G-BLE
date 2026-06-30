@@ -9,7 +9,7 @@ import org.junit.Test
 
 class BleDebugRfTransportTest {
     @Test
-    fun servicePayloadStartsWithProtocolHeaderAndSenderMac() {
+    fun protocolAdvDataIsByte9ThroughByte39() {
         val packet = RfPacketBuilder.buildControlPacket(
             deviceId = "111111",
             mode = ControlMode.Mode1,
@@ -17,13 +17,43 @@ class BleDebugRfTransportTest {
             senderMac = "11:22:33:44:55:66"
         )
 
-        val payload = BleDebugRfTransport.buildServicePayload(packet)
+        val advData = BleDebugRfTransport.buildProtocolAdvData(packet)
 
-        assertEquals(24, payload.size)
+        assertEquals(31, advData.size)
         assertArrayEquals(
-            byteArrayOf(0x42, 0x25, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66),
-            payload.sliceArray(0..7)
+            byteArrayOf(0x09, 0x09, 0x4C, 0x58, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31),
+            advData.sliceArray(0..9)
         )
-        assertArrayEquals(packet.sliceArray(13..28), payload.sliceArray(8..23))
+        assertArrayEquals(packet.sliceArray(8..38), advData)
+    }
+
+    @Test
+    fun localNameCarrierUsesV16NameAndManufacturerData() {
+        val packet = RfPacketBuilder.buildControlPacket(
+            deviceId = "111111",
+            mode = ControlMode.Mode1,
+            levels = StrengthLevels(42, 30, 56, 3, 0, 36)
+        )
+
+        val advData = BleDebugRfTransport.buildProtocolAdvData(packet)
+        val localName = BleDebugRfTransport.buildProtocolLocalName(advData)
+        val manufacturerData = BleDebugRfTransport.buildManufacturerPayload(advData)
+
+        assertEquals(8, localName.length)
+        assertEquals("LX111111", localName)
+        assertEquals(17, manufacturerData.size)
+        assertArrayEquals(
+            byteArrayOf(0x31, 0x2A, 0x1E, 0x38, 0x03, 0x00, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00),
+            manufacturerData
+        )
+        assertArrayEquals(
+            byteArrayOf(
+                0x14, 0xFF.toByte(), 0x00, 0x00,
+                0x31, 0x2A, 0x1E, 0x38, 0x03, 0x00, 0x24,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00
+            ),
+            BleDebugRfTransport.buildManufacturerAdStructure(advData)
+        )
     }
 }

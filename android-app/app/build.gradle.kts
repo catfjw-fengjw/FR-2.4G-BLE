@@ -60,11 +60,17 @@ dependencies {
 afterEvaluate {
     tasks.withType<Test>().configureEach {
         if (name != "testDebugUnitTest") return@configureEach
-        dependsOn("compileDebugUnitTestJavaWithJavac")
+        dependsOn("compileDebugUnitTestJavaWithJavac", "compileDebugUnitTestKotlin")
         val javaTestClasses = layout.buildDirectory.dir(
             "intermediates/javac/debugUnitTest/compileDebugUnitTestJavaWithJavac/classes"
         )
-        testClassesDirs = files(javaTestClasses)
-        classpath = classpath.plus(files(javaTestClasses))
+        val kotlinTestClasses = layout.buildDirectory.dir(
+            "intermediates/built_in_kotlinc/debugUnitTest/compileDebugUnitTestKotlin/classes"
+        )
+        testClassesDirs = files(javaTestClasses.get().asFile, kotlinTestClasses.get().asFile)
+        classpath = classpath.plus(files(javaTestClasses.get().asFile, kotlinTestClasses.get().asFile))
+        doFirst {
+            classpath = classpath.plus(testClassesDirs)
+        }
     }
 }
