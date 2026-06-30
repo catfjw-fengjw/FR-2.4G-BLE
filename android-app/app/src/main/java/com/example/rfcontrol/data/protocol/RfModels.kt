@@ -40,17 +40,17 @@ data class EventLog(
 )
 
 enum class ControlMode(val label: String, val value: Int) {
-    Mode1("模式 1", 0x31),
-    Mode2("模式 2", 0x32),
-    Mode3("模式 3", 0x33),
-    Mode4("模式 4", 0x34),
-    Mode5("模式 5", 0x35),
-    Mode6("模式 6", 0x36),
-    Mode7("模式 7", 0x37),
-    Mode8("模式 8", 0x38),
-    Mode9("模式 9", 0x39),
-    Standby("待机", 0x3A),
-    HeatOn("开启加热", 0x3B),
-    HeatOff("关闭加热", 0x3C),
-    PowerOff("关机", 0x3D)
+    Mode1("经典", 0x31),
+    Mode2("太空", 0x32),
+    Mode3("飞机", 0x33),
+    Mode4("冲浪", 0x34),
+    Mode5("强化", 0x35),
+    Mode6("混沌", 0x36),
+    Mode7("狂野", 0x37),
+    Mode8("麻辣", 0x38),
+    Mode9("黑化", 0x39),
+    Standby("休眠", 0x3A),
+    HeatOn("开启", 0x3B),
+    HeatOff("关闭", 0x3C),
+    PowerOff("停机", 0x3D)
 }

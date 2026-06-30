@@ -1,37 +1,37 @@
 package com.example.rfcontrol.ui.theme
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-val RfBg = Color(0xFF10100F)
-val RfPanel = Color(0xFF1A1A18)
-val RfPanelStrong = Color(0xFF22221F)
-val RfLine = Color(0xFF34342F)
-val RfLineSoft = Color(0xFF272722)
-val RfText = Color(0xFFF3F0E8)
-val RfMuted = Color(0xFFA9A394)
-val RfSubtle = Color(0xFF746F64)
-val RfTeal = Color(0xFF28D6B0)
-val RfAmber = Color(0xFFF2B84B)
-val RfRed = Color(0xFFF06B63)
-val RfBlue = Color(0xFF78A6FF)
-val RfGreen = Color(0xFF82D66D)
+val RfBg = Color(0xFFFFF8FC)
+val RfPanel = Color(0xFFFFFFFF)
+val RfPanelStrong = Color(0xFFFFECF6)
+val RfLine = Color(0xFFF4CDE1)
+val RfLineSoft = Color(0xFFF8DFEC)
+val RfText = Color(0xFF3E2544)
+val RfMuted = Color(0xFF8A637D)
+val RfSubtle = Color(0xFFB28AA5)
+val RfTeal = Color(0xFFFF6FAE)
+val RfAmber = Color(0xFFFFC94A)
+val RfRed = Color(0xFFE85B75)
+val RfBlue = Color(0xFF9B6DFF)
+val RfGreen = Color(0xFFB55CFF)
 
-private val RfColorScheme = darkColorScheme(
+private val RfColorScheme = lightColorScheme(
     primary = RfTeal,
     secondary = RfBlue,
     tertiary = RfAmber,
     background = RfBg,
     surface = RfPanel,
-    onPrimary = Color(0xFF07110E),
+    onPrimary = Color.White,
     onSecondary = RfText,
-    onTertiary = RfBg,
+    onTertiary = RfText,
     onBackground = RfText,
     onSurface = RfText,
     error = RfRed,
-    onError = RfText
+    onError = Color.White
 )
 
 @Composable

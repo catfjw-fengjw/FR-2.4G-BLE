@@ -6,8 +6,6 @@ object RfPacketBuilder {
     const val OverAirPacketSize = 42
     const val LegacyAdvDataSize = 31
     const val DefaultSenderMac = "11:11:11:11:11:11"
-    private const val CompanyIdLsb = 0x00
-    private const val CompanyIdMsb = 0x00
     private const val AdvDataStartIndex = 8
     private const val AdvDataEndIndex = 38
 
@@ -20,9 +18,11 @@ object RfPacketBuilder {
         deviceId: String,
         mode: ControlMode,
         levels: StrengthLevels,
-        senderMac: String = DefaultSenderMac
+        senderMac: String = DefaultSenderMac,
+        companyId: Int = 0x0000
     ): ByteArray {
         val bytes = ByteArray(OverAirPacketSize)
+        val normalizedCompanyId = companyId.coerceIn(0x0000, 0xFFFF)
         bytes[0] = 0x42
         bytes[1] = 0x25
         parseMac(senderMac).forEachIndexed { index, value ->
@@ -39,8 +39,8 @@ object RfPacketBuilder {
 
         bytes[18] = 0x14
         bytes[19] = 0xFF.toByte()
-        bytes[20] = CompanyIdLsb.toByte()
-        bytes[21] = CompanyIdMsb.toByte()
+        bytes[20] = (normalizedCompanyId and 0xFF).toByte()
+        bytes[21] = ((normalizedCompanyId shr 8) and 0xFF).toByte()
         bytes[22] = mode.value.toByte()
         bytes[23] = levels.vibration.coerceIn(0, 100).toByte()
         bytes[24] = levels.slap.coerceIn(0, 100).toByte()
@@ -70,9 +70,10 @@ object RfPacketBuilder {
         deviceId: String,
         mode: ControlMode,
         levels: StrengthLevels,
-        senderMac: String = DefaultSenderMac
+        senderMac: String = DefaultSenderMac,
+        companyId: Int = 0x0000
     ): ByteArray {
-        return buildControlPacket(deviceId, mode, levels, senderMac).sliceArray(AdvDataStartIndex..AdvDataEndIndex)
+        return buildControlPacket(deviceId, mode, levels, senderMac, companyId).sliceArray(AdvDataStartIndex..AdvDataEndIndex)
     }
 
     fun buildDevicePacket(device: RfDevice, battery: Int): ByteArray {

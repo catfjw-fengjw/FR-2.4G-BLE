@@ -1,0 +1,48 @@
+设备端广播包如下：
+
+TXbufData[0] = 0x42;            // 广播类型：非连接广播
+TXbufData[1] = 0x25; 	// 有效数据长度
+// 固定 MAC 地址
+TXbufData[2] = 0xb1;
+TXbufData[3] = 0xb2;
+TXbufData[4] = 0xb3;
+TXbufData[5] = 0xb4;
+TXbufData[6] = 0xb5;
+TXbufData[7] = 0xc1;
+
+TXbufData[8] 	= 0x09;  // 名称段长度 9
+TXbufData[9] 	= 0x09;                     // 类型：设备名称
+TXbufData[10] 	= 0x4C; // L
+TXbufData[11] 	= 0x59; // Y
+TXbufData[12] 	= 0x31; // 方案商代号
+TXbufData[13] 	= 0x31; // 设备代号
+TXbufData[14] 	= 0x31; // 客户代码
+TXbufData[15] 	= 0x31; // 0
+TXbufData[16] 	= 0x31; // 0
+TXbufData[17] 	= 0x31; // 1
+
+TXbufData[18] = 0x14; //20
+TXbufData[19] = 0xff; // 
+TXbufData[20] = 0x0; // 
+TXbufData[21] = 0x0; // 
+TXbufData[22] = TempWorkMode; // 模式
+TXbufData[23] = 0x0; // 震动强度
+TXbufData[24] = 0x0; //	拍打强度
+TXbufData[25] = 0x0; //	吮吸强度
+TXbufData[26] = 0x0; // 夹吸档位
+TXbufData[27] = 0x0; // 电击强度
+TXbufData[28] = 0x0; // 加热强度
+TXbufData[29] = 0x0; // 
+TXbufData[30] = 0x0; // 
+TXbufData[31] = 0x64; // 电量
+TXbufData[32] = 0x0; // 
+TXbufData[33] = 0x0; // 
+TXbufData[34] = 0x0; // 
+TXbufData[35] = 0x0; // 
+TXbufData[36] = 0x0; // 
+TXbufData[37] = 0x0; // 
+TXbufData[38] = 0x0; // 
+// 最后 3 字节填 0x55 → 留给 CRC 计算
+TXbufData[BUFF_LEN - 3] = 0x55;
+TXbufData[BUFF_LEN - 2] = 0x55;
+TXbufData[BUFF_LEN - 1] = 0x55;

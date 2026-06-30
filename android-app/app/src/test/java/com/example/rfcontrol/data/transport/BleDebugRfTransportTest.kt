@@ -56,4 +56,27 @@ class BleDebugRfTransportTest {
             BleDebugRfTransport.buildManufacturerAdStructure(advData)
         )
     }
+
+    @Test
+    fun manufacturerCompanyIdComesFromProtocolAdvData() {
+        val packet = RfPacketBuilder.buildControlPacket(
+            deviceId = "ABC123",
+            mode = ControlMode.Mode1,
+            levels = StrengthLevels(42, 30, 56, 3, 0, 36),
+            companyId = 0x1234
+        )
+
+        val advData = BleDebugRfTransport.buildProtocolAdvData(packet)
+
+        assertEquals(0x1234, BleDebugRfTransport.buildManufacturerCompanyId(advData))
+        assertArrayEquals(
+            byteArrayOf(
+                0x14, 0xFF.toByte(), 0x34, 0x12,
+                0x31, 0x2A, 0x1E, 0x38, 0x03, 0x00, 0x24,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00
+            ),
+            BleDebugRfTransport.buildManufacturerAdStructure(advData)
+        )
+    }
 }

@@ -18,7 +18,7 @@ public class RfPacketBuilderTest {
     }
 
     @Test
-    public void companyIdBytesRemainZero() {
+    public void defaultCompanyIdBytesRemainZero() {
         byte[] packet = RfPacketBuilder.INSTANCE.buildControlPacket(
                 "111111",
                 ControlMode.Mode1,
@@ -27,6 +27,20 @@ public class RfPacketBuilderTest {
 
         assertEquals(0x00, packet[20] & 0xFF);
         assertEquals(0x00, packet[21] & 0xFF);
+    }
+
+    @Test
+    public void customCompanyIdWritesLittleEndianBytes21And22() {
+        byte[] packet = RfPacketBuilder.INSTANCE.buildControlPacket(
+                "111111",
+                ControlMode.Mode1,
+                new StrengthLevels(42, 30, 56, 3, 0, 36),
+                RfPacketBuilder.DefaultSenderMac,
+                0x1234
+        );
+
+        assertEquals(0x34, packet[20] & 0xFF);
+        assertEquals(0x12, packet[21] & 0xFF);
     }
 
     @Test
@@ -99,6 +113,47 @@ public class RfPacketBuilderTest {
         assertArrayEquals(
                 new byte[]{
                         0x14, (byte) 0xFF, 0x00, 0x00, 0x31,
+                        0x2A, 0x1E, 0x38, 0x03, 0x00, 0x24,
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                        0x00, 0x00, 0x00, 0x00
+                },
+                new byte[]{
+                        advData[10], advData[11], advData[12], advData[13], advData[14],
+                        advData[15], advData[16], advData[17], advData[18], advData[19], advData[20],
+                        advData[21], advData[22], advData[23], advData[24], advData[25], advData[26],
+                        advData[27], advData[28], advData[29], advData[30]
+                }
+        );
+    }
+
+    @Test
+    public void customDeviceIdUpdatesNameAdBytes() {
+        StrengthLevels levels = new StrengthLevels(42, 30, 56, 3, 0, 36);
+        byte[] advData = RfPacketBuilder.INSTANCE.buildControlAdvData("ABC123", ControlMode.Mode1, levels);
+
+        assertArrayEquals(
+                new byte[]{0x09, 0x09, 0x4C, 0x58, 0x41, 0x42, 0x43, 0x31, 0x32, 0x33},
+                new byte[]{
+                        advData[0], advData[1], advData[2], advData[3], advData[4],
+                        advData[5], advData[6], advData[7], advData[8], advData[9]
+                }
+        );
+    }
+
+    @Test
+    public void customCompanyIdUpdatesManufacturerAdBytes() {
+        StrengthLevels levels = new StrengthLevels(42, 30, 56, 3, 0, 36);
+        byte[] advData = RfPacketBuilder.INSTANCE.buildControlAdvData(
+                "111111",
+                ControlMode.Mode1,
+                levels,
+                RfPacketBuilder.DefaultSenderMac,
+                0x1234
+        );
+
+        assertArrayEquals(
+                new byte[]{
+                        0x14, (byte) 0xFF, 0x34, 0x12, 0x31,
                         0x2A, 0x1E, 0x38, 0x03, 0x00, 0x24,
                         0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                         0x00, 0x00, 0x00, 0x00

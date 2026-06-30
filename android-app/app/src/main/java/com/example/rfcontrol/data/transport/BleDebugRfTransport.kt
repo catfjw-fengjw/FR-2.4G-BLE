@@ -2,12 +2,12 @@ package com.example.rfcontrol.data.transport
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.bluetooth.le.AdvertisingSet
-import android.bluetooth.le.AdvertisingSetCallback
-import android.bluetooth.le.AdvertisingSetParameters
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.AdvertiseData
+import android.bluetooth.le.AdvertisingSet
+import android.bluetooth.le.AdvertisingSetCallback
+import android.bluetooth.le.AdvertisingSetParameters
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -60,7 +60,7 @@ class BleDebugRfTransport(context: Context) : RfTransport {
 
     @SuppressLint("MissingPermission")
     override suspend fun startAdvertising(packetProvider: () -> ByteArray) {
-        val activeAdvertiser = advertiser ?: error("当前手机不支持 BLE 广播发送或蓝牙未开启。")
+        val activeAdvertiser = advertiser ?: error("当前手机不支持 BLE 广播发送，或蓝牙未开启。")
         if (!isBleSupported) error("当前手机未声明 BLE 硬件能力。")
         if (!isBluetoothEnabled) error("蓝牙未开启，请先打开蓝牙。")
         if (!hasAdvertisePermission()) error("缺少蓝牙广播权限，请允许附近设备/蓝牙权限。")
@@ -100,7 +100,7 @@ class BleDebugRfTransport(context: Context) : RfTransport {
                 _transportEvents.tryEmit(
                     TransportEvent(
                         TransportEventType.Tx,
-                        "TYPE=ADV_NONCONN_IND Flags=${flagsText(discoverableSupported)} Name=${localName} NameAd=${hex(buildNameAdStructure(protocolAdvData))} ManufacturerAd=${hex(buildManufacturerAdStructure(protocolAdvData))} AdvData=${hex(protocolAdvData)}"
+                        "TYPE=ADV_NONCONN_IND Flags=${flagsText(discoverableSupported)} Name=$localName NameAd=${hex(buildNameAdStructure(protocolAdvData))} ManufacturerAd=${hex(buildManufacturerAdStructure(protocolAdvData))} AdvData=${hex(protocolAdvData)}"
                     )
                 )
             }
@@ -117,12 +117,7 @@ class BleDebugRfTransport(context: Context) : RfTransport {
             }
 
             override fun onAdvertisingSetStopped(advertisingSet: AdvertisingSet?) {
-                _transportEvents.tryEmit(
-                    TransportEvent(
-                        TransportEventType.Info,
-                        ""
-                    )
-                )
+                _transportEvents.tryEmit(TransportEvent(TransportEventType.Info, ""))
             }
         }
 
@@ -191,8 +186,6 @@ class BleDebugRfTransport(context: Context) : RfTransport {
     }
 
     internal companion object {
-        private const val CompanyId = 0x0000
-
         fun buildProtocolAdvData(overAirPacket: ByteArray): ByteArray {
             check(overAirPacket.size == RfPacketBuilder.OverAirPacketSize) {
                 "空中包预览必须是 ${RfPacketBuilder.OverAirPacketSize} 字节。"
@@ -219,7 +212,7 @@ class BleDebugRfTransport(context: Context) : RfTransport {
             return AdvertiseData.Builder()
                 .setIncludeDeviceName(true)
                 .setIncludeTxPowerLevel(false)
-                .addManufacturerData(CompanyId, buildManufacturerPayload(protocolAdvData))
+                .addManufacturerData(buildManufacturerCompanyId(protocolAdvData), buildManufacturerPayload(protocolAdvData))
                 .build()
         }
 
@@ -237,13 +230,18 @@ class BleDebugRfTransport(context: Context) : RfTransport {
             return protocolAdvData.sliceArray(10..30)
         }
 
-        fun buildManufacturerPayload(protocolAdvData: ByteArray): ByteArray {
+        fun buildManufacturerCompanyId(protocolAdvData: ByteArray): Int {
             val manufacturerAd = buildManufacturerAdStructure(protocolAdvData)
             check(manufacturerAd[0].toInt() == 0x14 && (manufacturerAd[1].toInt() and 0xFF) == 0xFF) {
                 "协议 AdvData 必须包含 14 FF 厂商字段。"
             }
-            check(manufacturerAd[2].toInt() == 0x00 && manufacturerAd[3].toInt() == 0x00) {
-                "V1.6 Company ID 必须是 00 00。"
+            return (manufacturerAd[2].toInt() and 0xFF) or ((manufacturerAd[3].toInt() and 0xFF) shl 8)
+        }
+
+        fun buildManufacturerPayload(protocolAdvData: ByteArray): ByteArray {
+            val manufacturerAd = buildManufacturerAdStructure(protocolAdvData)
+            check(manufacturerAd[0].toInt() == 0x14 && (manufacturerAd[1].toInt() and 0xFF) == 0xFF) {
+                "协议 AdvData 必须包含 14 FF 厂商字段。"
             }
             return manufacturerAd.sliceArray(4..20)
         }
