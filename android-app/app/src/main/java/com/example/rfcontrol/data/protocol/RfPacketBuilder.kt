@@ -6,6 +6,8 @@ object RfPacketBuilder {
     const val OverAirPacketSize = 42
     const val LegacyAdvDataSize = 31
     const val DefaultSenderMac = "11:11:11:11:11:11"
+    private const val PrefixX = 0x58
+    private const val PrefixY = 0x59
     private const val AdvDataStartIndex = 8
     private const val AdvDataEndIndex = 38
 
@@ -31,7 +33,7 @@ object RfPacketBuilder {
         bytes[8] = 0x09
         bytes[9] = 0x09
         bytes[10] = 0x4C
-        bytes[11] = 0x58
+        bytes[11] = PrefixX.toByte()
 
         deviceIdToBytes(deviceId).forEachIndexed { index, value ->
             bytes[12 + index] = value.toByte()
@@ -86,8 +88,8 @@ object RfPacketBuilder {
         macBytes.forEachIndexed { index, value ->
             bytes[2 + index] = value.toByte()
         }
-        bytes[22] = 0x00
-        bytes[23] = battery.coerceIn(0, 100).toByte()
+        bytes[11] = PrefixY.toByte()
+        bytes[31] = battery.coerceIn(0, 100).toByte()
         return bytes
     }
 

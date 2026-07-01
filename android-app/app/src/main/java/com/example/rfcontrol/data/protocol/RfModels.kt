@@ -18,7 +18,11 @@ data class RfDevice(
 )
 
 data class DeviceStatus(
+    val namePrefix: String,
     val deviceId: String,
+    val companyId: Int,
+    val mode: ControlMode,
+    val levels: StrengthLevels,
     val mac: String,
     val battery: Int,
     val rssi: Int,

@@ -55,15 +55,17 @@ class MockRfTransport(
         _transportEvents.tryEmit(TransportEvent(TransportEventType.Info, "模拟广播已停止。"))
     }
 
-    override suspend fun startScanning() {
+    override suspend fun startScanning(expectedDeviceIdProvider: () -> String) {
         scanningJob?.cancel()
         scanningJob = scope.launch {
             while (isActive) {
                 delay(5_000)
+                val targetDeviceId = expectedDeviceIdProvider()
+                val device = devices.firstOrNull { it.id == targetDeviceId } ?: continue
                 battery = (battery + listOf(-1, 1).random()).coerceIn(30, 100)
                 rssi = (rssi + (-3..3).random()).coerceIn(-82, -35)
-                val packet = RfPacketBuilder.buildDevicePacket(devices.first(), battery)
-                RfPacketParser.parseDeviceStatus(packet, rssi)?.let {
+                val packet = RfPacketBuilder.buildDevicePacket(device, battery)
+                RfPacketParser.parseDeviceStatus(packet, rssi, expectedDeviceId = targetDeviceId)?.let {
                     _deviceStatuses.emit(it)
                 }
             }

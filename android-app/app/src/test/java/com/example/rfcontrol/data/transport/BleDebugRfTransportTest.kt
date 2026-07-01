@@ -79,4 +79,33 @@ class BleDebugRfTransportTest {
             BleDebugRfTransport.buildManufacturerAdStructure(advData)
         )
     }
+
+    @Test
+    fun scanPayloadCanBeRebuiltIntoV17DevicePreviewPacket() {
+        val payload = byteArrayOf(
+            0x31,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00,
+            0x64,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        )
+
+        val packet = BleDebugRfTransport.buildDeviceStatusPreviewPacket(
+            localName = "LY111111",
+            companyId = 0x0000,
+            manufacturerPayload = payload,
+            advertiserMac = "B1:B2:B3:B4:B5:C1"
+        )
+
+        assertArrayEquals(
+            byteArrayOf(0x42, 0x25, 0xB1.toByte(), 0xB2.toByte(), 0xB3.toByte(), 0xB4.toByte(), 0xB5.toByte(), 0xC1.toByte()),
+            packet.sliceArray(0..7)
+        )
+        assertArrayEquals(
+            byteArrayOf(0x09, 0x09, 0x4C, 0x59, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31),
+            packet.sliceArray(8..17)
+        )
+        assertEquals(0x64, packet[31].toInt() and 0xFF)
+        assertArrayEquals(byteArrayOf(0x55, 0x55, 0x55), packet.sliceArray(39..41))
+    }
 }

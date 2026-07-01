@@ -10,7 +10,7 @@ interface RfTransport {
     val transportEvents: Flow<TransportEvent>
     suspend fun startAdvertising(packetProvider: () -> ByteArray)
     suspend fun stopAdvertising()
-    suspend fun startScanning()
+    suspend fun startScanning(expectedDeviceIdProvider: () -> String)
     suspend fun stopScanning()
 }
 

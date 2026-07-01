@@ -3,6 +3,7 @@ package com.example.rfcontrol.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.rfcontrol.data.protocol.ControlMode
+import com.example.rfcontrol.data.protocol.DeviceStatus
 import com.example.rfcontrol.data.protocol.EventLog
 import com.example.rfcontrol.data.protocol.LogType
 import com.example.rfcontrol.data.protocol.RfPacketBuilder
@@ -31,7 +32,13 @@ data class ControlUiState(
     val isAdvertising: Boolean = false,
     val bleCapability: String = "未检测",
     val txCount: Long = 0,
-    val logs: List<EventLog> = emptyList()
+    val logs: List<EventLog> = emptyList(),
+    val lastRxDeviceId: String? = null,
+    val lastRxBattery: Int? = null,
+    val lastRxMac: String = "--:--:--:--:--:--",
+    val lastRxPacketHex: String = "",
+    val lastRxAtMillis: Long? = null,
+    val nowMillis: Long = System.currentTimeMillis()
 ) {
     val validDeviceId: Boolean
         get() = RfPacketBuilder.isDeviceIdValid(deviceId)
@@ -65,12 +72,28 @@ data class ControlUiState(
 
     val txManufacturerAdHex: String
         get() = RfPacketBuilder.toHex(txAdvData.sliceArray(10..30))
+
+    val isConnected: Boolean
+        get() = lastRxAtMillis != null &&
+            lastRxDeviceId == deviceId &&
+            nowMillis - lastRxAtMillis <= ConnectionTimeoutMillis
+
+    val connectionLabel: String
+        get() = if (isConnected) "已连接" else "未连接"
+
+    val batteryText: String
+        get() = lastRxBattery?.let { "${it.coerceIn(0, 100)}%" } ?: "--%"
+
+    companion object {
+        const val ConnectionTimeoutMillis: Long = 20_000
+    }
 }
 
 class ControlViewModel : ViewModel() {
     private var realBleTransport: RfTransport? = null
     private var txTimerJob: Job? = null
     private var refreshAdvertisingJob: Job? = null
+    private var connectionTickerJob: Job? = null
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
     private val _uiState = MutableStateFlow(ControlUiState())
     val uiState: StateFlow<ControlUiState> = _uiState.asStateFlow()
@@ -78,37 +101,59 @@ class ControlViewModel : ViewModel() {
     fun configureRealBleTransport(transport: RfTransport, capabilitySummary: String) {
         realBleTransport = transport
         _uiState.update { it.copy(bleCapability = capabilitySummary) }
+        startConnectionTicker()
+
         viewModelScope.launch {
             transport.transportEvents.collect { event ->
-                if (event.type == TransportEventType.Tx && event.message.isNotBlank()) {
-                    _uiState.update {
-                        it.copy(
-                            txCount = it.txCount + 1,
-                            logs = prependTxLog(it.logs, event.message)
-                        )
+                when (event.type) {
+                    TransportEventType.Tx -> {
+                        if (event.message.isNotBlank()) {
+                            _uiState.update {
+                                it.copy(
+                                    txCount = it.txCount + 1,
+                                    logs = prependLog(it.logs, LogType.Tx, event.message)
+                                )
+                            }
+                        }
                     }
-                } else if (event.type == TransportEventType.Error) {
-                    stopTxTimer()
-                    _uiState.update {
-                        it.copy(
-                            isAdvertising = false,
-                            logs = prependLog(it.logs, LogType.Error, event.message)
-                        )
+
+                    TransportEventType.Error -> {
+                        if (event.message.isNotBlank()) {
+                            val stopAdvertising = event.message.contains("广播")
+                            if (stopAdvertising) {
+                                stopTxTimer()
+                            }
+                            _uiState.update {
+                                it.copy(
+                                    isAdvertising = if (stopAdvertising) false else it.isAdvertising,
+                                    logs = prependLog(it.logs, LogType.Error, event.message)
+                                )
+                            }
+                        }
                     }
+
+                    else -> Unit
                 }
+            }
+        }
+
+        viewModelScope.launch {
+            transport.deviceStatuses.collect { status ->
+                handleDeviceStatus(status)
             }
         }
     }
 
     fun noteBlePermissionResult(granted: Boolean) {
-        if (!granted) {
-            stopTxTimer()
-            _uiState.update {
-                it.copy(
-                    isAdvertising = false,
-                    logs = prependLog(it.logs, LogType.Error, "蓝牙广播权限未授权")
-                )
-            }
+        if (granted) {
+            startStatusScanning()
+            return
+        }
+
+        _uiState.update {
+            it.copy(
+                logs = prependLog(it.logs, LogType.Error, "蓝牙权限未授权")
+            )
         }
     }
 
@@ -117,7 +162,12 @@ class ControlViewModel : ViewModel() {
             .uppercase(Locale.US)
             .filter { it in '0'..'9' || it in 'A'..'Z' }
             .take(6)
-        _uiState.update { it.copy(deviceId = normalized) }
+        _uiState.update {
+            it.copy(
+                deviceId = normalized,
+                nowMillis = System.currentTimeMillis()
+            )
+        }
         refreshAdvertisingIfRunning()
     }
 
@@ -173,6 +223,42 @@ class ControlViewModel : ViewModel() {
         _uiState.update { it.copy(isAdvertising = false) }
     }
 
+    fun startStatusScanning() {
+        val transport = realBleTransport ?: return
+        viewModelScope.launch {
+            try {
+                transport.startScanning { _uiState.value.deviceId }
+            } catch (error: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        logs = prependLog(it.logs, LogType.Error, error.message ?: "扫描启动失败")
+                    )
+                }
+            }
+        }
+    }
+
+    fun stopStatusScanning() {
+        viewModelScope.launch {
+            realBleTransport?.stopScanning()
+        }
+    }
+
+    private fun handleDeviceStatus(status: DeviceStatus) {
+        val now = System.currentTimeMillis()
+        _uiState.update {
+            it.copy(
+                lastRxDeviceId = status.deviceId,
+                lastRxBattery = status.battery,
+                lastRxMac = status.mac,
+                lastRxPacketHex = status.packetHex,
+                lastRxAtMillis = now,
+                nowMillis = now,
+                logs = prependLog(it.logs, LogType.Rx, rxLogMessage(status))
+            )
+        }
+    }
+
     private fun updateLevels(transform: (StrengthLevels) -> StrengthLevels) {
         _uiState.update { it.copy(levels = transform(it.levels)) }
         refreshAdvertisingIfRunning()
@@ -185,7 +271,7 @@ class ControlViewModel : ViewModel() {
         _uiState.update { current ->
             current.copy(
                 txCount = current.txCount + TxCadence.ChangeBurstPacketCount,
-                logs = prependTxLog(current.logs, burstLogMessage(current))
+                logs = prependLog(current.logs, LogType.Tx, burstLogMessage(current))
             )
         }
         refreshAdvertisingJob?.cancel()
@@ -213,9 +299,19 @@ class ControlViewModel : ViewModel() {
                 _uiState.update {
                     it.copy(
                         txCount = it.txCount + 1,
-                        logs = prependTxLog(it.logs, txLogMessage(it))
+                        logs = prependLog(it.logs, LogType.Tx, txLogMessage(it))
                     )
                 }
+            }
+        }
+    }
+
+    private fun startConnectionTicker() {
+        if (connectionTickerJob != null) return
+        connectionTickerJob = viewModelScope.launch {
+            while (true) {
+                delay(1_000)
+                _uiState.update { it.copy(nowMillis = System.currentTimeMillis()) }
             }
         }
     }
@@ -223,10 +319,6 @@ class ControlViewModel : ViewModel() {
     private fun stopTxTimer() {
         txTimerJob?.cancel()
         txTimerJob = null
-    }
-
-    private fun prependTxLog(logs: List<EventLog>, message: String): List<EventLog> {
-        return prependLog(logs, LogType.Tx, message)
     }
 
     private fun prependLog(logs: List<EventLog>, type: LogType, message: String): List<EventLog> {
@@ -241,5 +333,19 @@ class ControlViewModel : ViewModel() {
         return "BURST=${TxCadence.ChangeBurstPacketCount} ${txLogMessage(state)}"
     }
 
+    private fun rxLogMessage(status: DeviceStatus): String {
+        return "RX MAC=${status.mac} Battery=${status.battery}% DATA=${status.packetHex}"
+    }
+
     private fun now(): String = LocalTime.now().format(timeFormatter)
+
+    override fun onCleared() {
+        stopTxTimer()
+        refreshAdvertisingJob?.cancel()
+        connectionTickerJob?.cancel()
+        viewModelScope.launch {
+            realBleTransport?.stopScanning()
+        }
+        super.onCleared()
+    }
 }

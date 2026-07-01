@@ -174,4 +174,15 @@ public class RfPacketBuilderTest {
         assertFalse(RfPacketBuilder.INSTANCE.isDeviceIdValid("ABC12345"));
         assertFalse(RfPacketBuilder.INSTANCE.isDeviceIdValid("LX_DX001"));
     }
+
+    @Test
+    public void devicePacketUsesLyPrefixAndBatteryByte32() {
+        RfDevice device = new RfDevice("111111", "B1:B2:B3:B4:B5:C1", -52, 80, "just now");
+
+        byte[] packet = RfPacketBuilder.INSTANCE.buildDevicePacket(device, 100);
+
+        assertEquals(0x59, packet[11] & 0xFF);
+        assertEquals(0x64, packet[31] & 0xFF);
+        assertEquals(0x00, packet[23] & 0xFF);
+    }
 }

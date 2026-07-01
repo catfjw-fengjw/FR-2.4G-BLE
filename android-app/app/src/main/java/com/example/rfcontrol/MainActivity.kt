@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ScrollState
@@ -19,11 +20,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -77,8 +80,12 @@ class MainActivity : ComponentActivity() {
     private val controlViewModel by viewModels<ControlViewModel>()
     private val blePermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) {
-        controlViewModel.noteBlePermissionResult(it.values.all { granted -> granted })
+    ) { permissions ->
+        val granted = permissions.values.all { it }
+        controlViewModel.noteBlePermissionResult(granted)
+        if (granted) {
+            controlViewModel.startStatusScanning()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,6 +93,10 @@ class MainActivity : ComponentActivity() {
         val bleTransport = BleDebugRfTransport(this)
         controlViewModel.configureRealBleTransport(bleTransport, bleTransport.capabilitySummary())
         requestBlePermissionsIfNeeded()
+        if (hasAllRequiredBlePermissions()) {
+            controlViewModel.startStatusScanning()
+        }
+
         setContent {
             RfControlTheme {
                 val state by controlViewModel.uiState.collectAsState()
@@ -94,15 +105,32 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onDestroy() {
+        controlViewModel.stopStatusScanning()
+        super.onDestroy()
+    }
+
     private fun requestBlePermissionsIfNeeded() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-        blePermissionLauncher.launch(
+        if (hasAllRequiredBlePermissions()) return
+        blePermissionLauncher.launch(requiredBlePermissions())
+    }
+
+    private fun hasAllRequiredBlePermissions(): Boolean {
+        return requiredBlePermissions().all { permission ->
+            ContextCompat.checkSelfPermission(this, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    private fun requiredBlePermissions(): Array<String> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             arrayOf(
                 Manifest.permission.BLUETOOTH_SCAN,
                 Manifest.permission.BLUETOOTH_ADVERTISE,
                 Manifest.permission.BLUETOOTH_CONNECT
             )
-        )
+        } else {
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
     }
 }
 
@@ -166,7 +194,10 @@ private fun AppHeader(state: ControlUiState) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Image(
                     painter = painterResource(id = R.drawable.logo),
                     contentDescription = "悦色 logo",
@@ -182,7 +213,73 @@ private fun AppHeader(state: ControlUiState) {
             }
             Text("懂你的“灵魂性”伴侣", color = RfMuted, fontSize = 12.sp)
         }
-        StatusPill(if (state.isAdvertising) "广播中" else "已停止", state.isAdvertising)
+        HeaderStatus(state)
+    }
+}
+
+@Composable
+private fun HeaderStatus(state: ControlUiState) {
+    val batteryFraction = ((state.lastRxBattery ?: 0).coerceIn(0, 100) / 100f)
+    Column(
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(if (state.isConnected) RfGreen else RfRed)
+            )
+            Text(
+                state.connectionLabel,
+                color = if (state.isConnected) RfGreen else RfRed,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Surface(
+            color = Color.White,
+            contentColor = RfText,
+            border = BorderStroke(1.dp, if (state.isConnected) RfGreen else RfLine),
+            shape = RoundedCornerShape(999.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .width(24.dp)
+                            .height(12.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .border(1.dp, RfLine, RoundedCornerShape(4.dp))
+                            .padding(1.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(batteryFraction)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(if (state.isConnected) RfGreen else RfAmber)
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .width(2.dp)
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(RfLine)
+                    )
+                }
+                Text(state.batteryText, fontSize = 12.sp, fontWeight = FontWeight.Black)
+            }
+        }
     }
 }
 
@@ -388,12 +485,16 @@ private fun ClipLevelSelector(value: Int, onChange: (Int) -> Unit) {
         }
     }
 }
+
 @Composable
 private fun DebugPage(state: ControlUiState) {
     Panel {
         MetricRow("设备码", state.deviceId)
         MetricRow("公司代码", state.companyIdText)
         MetricRow("预览 MAC", state.senderMac)
+        MetricRow("连接状态", state.connectionLabel)
+        MetricRow("电量", state.batteryText)
+        MetricRow("接收 MAC", state.lastRxMac)
         MetricRow("目标 PDU", state.targetPduType)
         MetricRow("目标包头", state.targetPduHeader)
         MetricRow("AdvData 长度", "${state.txAdvData.size} 字节")
@@ -406,6 +507,9 @@ private fun DebugPage(state: ControlUiState) {
     HexPanel("Manufacturer AD", state.txManufacturerAdHex)
     HexPanel("协议 AdvData Byte9~Byte39", state.txAdvDataHex)
     HexPanel("完整 42 字节预览", state.txPacketHex)
+    if (state.lastRxPacketHex.isNotBlank()) {
+        HexPanel("最后接收设备包", state.lastRxPacketHex)
+    }
     LogPanel(state.logs)
 }
 
@@ -471,18 +575,6 @@ private fun LogPanel(logs: List<EventLog>) {
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun StatusPill(label: String, active: Boolean) {
-    Surface(
-        color = if (active) RfTeal.copy(alpha = 0.16f) else RfPanelStrong,
-        contentColor = if (active) RfTeal else RfMuted,
-        border = BorderStroke(1.dp, if (active) RfTeal.copy(alpha = 0.55f) else RfLine),
-        shape = RoundedCornerShape(999.dp)
-    ) {
-        Text(label, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), fontSize = 12.sp)
     }
 }
 
