@@ -42,6 +42,7 @@ TXbufData[35] = 0x0; //
 TXbufData[36] = 0x0; // 
 TXbufData[37] = 0x0; // 
 TXbufData[38] = 0x0; // 
+
 // 最后 3 字节填 0x55 → 留给 CRC 计算
 TXbufData[BUFF_LEN - 3] = 0x55;
 TXbufData[BUFF_LEN - 2] = 0x55;
